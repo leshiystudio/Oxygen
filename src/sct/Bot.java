@@ -61,6 +61,14 @@ public class Bot{
 		if (zoom == 0) {//зум x1
 			canvas.setColor(get_color(draw_type));
 			canvas.fillRect(x, y, Constant.size, Constant.size);
+			int x_center = (int) Math.ceil(x + Constant.size / 2);
+			int y_center = (int) Math.ceil(y + Constant.size / 2);
+			
+			int x_dir = (int) Math.ceil(x_center + (Constant.movelist[rotate][0] * Constant.size) / 2);
+			int y_dir = (int) Math.ceil(y_center + (Constant.movelist[rotate][1] * Constant.size)  / 2);
+			canvas.setColor(Color.black);
+			canvas.drawLine(x_center, y_center, x_dir, y_dir);
+			
 		}else if (zoom == 1) {//зум x2.5
 			int w = Constant.world_scale[0] * Constant.size / Constant.zoom_sizes[zoom];
 			int h = Constant.world_scale[1] * Constant.size / Constant.zoom_sizes[zoom];
@@ -665,13 +673,16 @@ public class Bot{
 	//
 	public int[] get_rotate_position(int rot){
 		int[] pos = new int[2];
-		pos[0] = (xpos + Constant.movelist[rot][0]) % Constant.world_scale[0];
-		pos[1] = ypos + Constant.movelist[rot][1];
-		if (pos[0] < 0) {
-			pos[0] = Constant.world_scale[0] - 1;
-		}else if(pos[0] >= Constant.world_scale[0]) {
-			pos[0] = 0;
-		}
+		pos[0] = Constant.mod((xpos + Constant.movelist[rot][0]), Constant.world_scale[0]);
+		pos[1] = Constant.mod((ypos + Constant.movelist[rot][1]), Constant.world_scale[1]);
+//		pos[0] = (xpos + Constant.movelist[rot][0]) % Constant.world_scale[0];
+//		pos[1] = ypos + Constant.movelist[rot][1];
+//		if (pos[0] < 0) {
+//			pos[0] = Constant.world_scale[0] - 1;
+//		}else if(pos[0] >= Constant.world_scale[0]) {
+//			pos[0] = 0;
+//		}
+		
 		return(pos);
 	}
 	//
@@ -711,7 +722,7 @@ public class Bot{
 				}else if (type == 7) {
 					c = new Color(0, 128, 255);
 				}
-			}else if (draw_type == 6) {
+			}else if (draw_type == 6) {// свяязи
 				int count_ch = count_chains();
 				if (count_ch == 0) {
 					c = new Color(255, 255, 128);

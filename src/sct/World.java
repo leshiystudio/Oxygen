@@ -478,9 +478,9 @@ public class World extends JPanel{
 				}
 			}
 			//
-			WorldUtils.gas(oxygen_map, org_map);
-			WorldUtils.gas(co2_map, org_map);
-			//WorldUtils.minerals(mnr_map);
+//			WorldUtils.gas(oxygen_map, org_map);
+//			WorldUtils.gas(co2_map, org_map);
+			WorldUtils.minerals(mnr_map);
 			//
 			if (rec && steps % 25 == 0) {
 				record();

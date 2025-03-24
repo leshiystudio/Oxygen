@@ -5,17 +5,18 @@ import java.awt.Color;
 public class Constant {
 	public static int W = 1920;
 	public static int H = 1080;
-	public static int size = 2;
+	public static int size = 5;
 	public static int[] world_scale = {500, 500};
-	public static int starting_bot_count = 45000;
+	public static int starting_bot_count = 10000;
 	public static double starting_ox = 0.02;
 	public static double starting_co2 = 0.02;
 	public static int starting_org = 200;
 	public static double ox_render_maximum_coeff = 0.25;
 	public static double co2_render_maximum_coeff = 0.25;
 	public static String[] draw_type_names = {"predators", "energy", "color", "clans", "age", "types", "chains"};
+	public static String[] res_type_names = {"none", "oxygen", "organics", "minerals", "co2"};
 	public static String[] mouse_func_names = {"select", "set", "remove"};
-	public static int[] zoom_sizes = {2, 5, 10};
+	public static int[] zoom_sizes = {5, 5, 10}; //{2, 5, 10};
 	//
 	public static double org_recycle_ox_coeff = 0.000027;
 	public static double life_ox_coeff = 0.002;
@@ -80,13 +81,17 @@ public class Constant {
 	}
 	public static int[] get_rotate_position(int rot, int[] sp){
 		int[] pos = new int[2];
-		pos[0] = (sp[0] + Constant.movelist[rot][0]) % Constant.world_scale[0];
-		pos[1] = sp[1] + Constant.movelist[rot][1];
-		if (pos[0] < 0) {
-			pos[0] = Constant.world_scale[0] - 1;
-		}else if(pos[0] >= Constant.world_scale[0]) {
-			pos[0] = 0;
-		}
+		pos[0] = Constant.mod((sp[0] + Constant.movelist[rot][0]), Constant.world_scale[0]);
+		pos[1] = Constant.mod((sp[1] + Constant.movelist[rot][1]), Constant.world_scale[1]);
+		
+//		int[] pos = new int[2];
+//		pos[0] = (sp[0] + Constant.movelist[rot][0]) % Constant.world_scale[0];
+//		pos[1] = sp[1] + Constant.movelist[rot][1];
+//		if (pos[0] < 0) {
+//			pos[0] = Constant.world_scale[0] - 1;
+//		}else if(pos[0] >= Constant.world_scale[0]) {
+//			pos[0] = 0;
+//		}
 		return(pos);
 	}
 	public static Color gradient(Color color1, Color color2, double grad) {
@@ -95,4 +100,7 @@ public class Constant {
 		int b = (int)(color1.getBlue() * (1 - grad) + color2.getBlue() * grad);
 		return(new Color(r, g, b));
 	}
+	public static int mod(int a, int b) {
+		return (a % b + b) % b;
+	}	
 }
