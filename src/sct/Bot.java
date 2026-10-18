@@ -4,9 +4,12 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Random;
 import java.util.ListIterator;
+import java.util.function.Predicate;
 
 public class Bot extends BotSuper {
 	ArrayList<Bot> objects;
@@ -21,7 +24,7 @@ public class Bot extends BotSuper {
 	public Color color;//основные параметры
 	public Color clan_color = new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
 	public double energy;
-	public int age = Constant.max_age;
+	public double age = Constant.max_age;//дробный, чтобы работал замедленный износ королевы и подчиненных
 	public int memory = 0;
 	public int type;
 	public int[] commands = new int[Constant.mind_size];
@@ -507,6 +510,8 @@ public class Bot extends BotSuper {
 			}else if(command == 49){//королева. прославить свою королеву
 				if(queen == 2 && queen_bot != null) {
 					set_queen(queen_bot,this,1);
+					index += 1;//без сдвига мозг выполнял эту команду вечно
+					index %= max_mind;
 					break;
 				}else {
 					index += command;
@@ -536,7 +541,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius + 1;
 					//System.out.println("Королева. Приказ королевы в дистанции: do_command="+do_command+" distance="+distance);
-					queen_orders_eq_distance(this,this, 0, distance, do_command);
+					queen_orders(distance, do_command, 0);
+					index += 3;//команда + 2 параметра
+					index %= max_mind;
 					break;
 				}else {
 					index += command;
@@ -547,7 +554,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius;
 					//System.out.println("Королева. Приказ королевы за дистанцией: do_command="+do_command+" distance="+distance);
-					queen_orders_lg_distance(this,this, 0, distance, do_command);
+					queen_orders(distance, do_command, 1);
+					index += 3;//команда + 2 параметра
+					index %= max_mind;
 					break;
 				}else {
 					index += command;
@@ -558,14 +567,18 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius + 2;
 					//System.out.println("Королева. Приказ королевы перед дистанцией: do_command="+do_command+" distance="+distance);
-					queen_orders_ls_distance(this,this, 0, distance, do_command);
+					queen_orders(distance, do_command, -1);
+					index += 3;//команда + 2 параметра
+					index %= max_mind;
 					break;
 				}else {
 					index += command;
 					index %= max_mind;
 				}
-			}else if(command == 55){//королева. посчитать подчиненных
+			}else if(command == 55){//королева. посчитать подчиненных (пока заглушка)
 				if(queen == 1) {
+					index += 1;
+					index %= max_mind;
 					break;
 				}else {
 					index += command;
@@ -624,130 +637,73 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
-	public void queen_draw(Graphics g, Bot queen_bot, Bot b, int distance) {
-		int max_radius = Constant.queen_max_radius;
-		if(distance > 0 && distance < max_radius) {//остальные подчиненные в указанном радиусе
+	//КОРОЛЕВЫ
+	//
+	//обход колонии по связям цепочки в ширину: каждая клетка посещается один раз,
+	//distance — кратчайшее число шагов по цепочке от start, parent — от кого пришли
+	private interface ChainVisitor {
+		void visit(Bot b, Bot parent, int distance);
+	}
+	private void walk_chain(Bot start, int start_distance, int max_distance, Predicate<Bot> pass, ChainVisitor visitor) {
+		ArrayDeque<Bot> queue = new ArrayDeque<Bot>();
+		HashMap<Bot, Integer> dist = new HashMap<Bot, Integer>();
+		queue.add(start);
+		dist.put(start, start_distance);
+		while (!queue.isEmpty()) {
+			Bot b = queue.poll();
+			int d = dist.get(b);
+			if (d >= max_distance) {
+				continue;
+			}
 			for (int i = 0; i < 8; i++) {
 				int[] pos = b.get_rotate_position(i);
-				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						//
-						if (queen_bot.equals(b.queen_bot)) {
-							if(map[pos[0]][pos[1]].queen == 2 && map[pos[0]][pos[1]].chain[(i+4)%8]) {
-								map[pos[0]][pos[1]].Draw(g, 7, 0, null);
-							}
-							queen_draw(g, queen_bot, map[pos[0]][pos[1]], distance+1);
-							distance--;
-						}
-					}
+				Bot n = map[pos[0]][pos[1]];
+				if (n == null || n.state != 0 || n.killed != 0 || dist.containsKey(n)) {
+					continue;
 				}
+				if (!b.chain[i] && !n.chain[(i + 4) % 8]) {//не связаны цепочкой
+					continue;
+				}
+				if (!pass.test(n)) {
+					continue;
+				}
+				dist.put(n, d + 1);
+				visitor.visit(n, b, d + 1);
+				queue.add(n);
 			}
 		}
-	}	
+	}
 	//
-	public void set_queen(Bot queen_bot, Bot b, int distance) {
-		int max_radius = Constant.queen_max_radius;
-		//если дистанция 0 то это королева
-		if (distance < 1) {
+	public void queen_draw(Graphics2D g) {//линии от каждой подчиненной к той клетке, через которую она связана с королевой
+		g.setStroke(new BasicStroke(1f));
+		g.setColor(new Color(0, 50, 250));
+		walk_chain(this, 0, Constant.queen_max_radius, n -> n.queen == 2 && n.queen_bot == this, (n, parent, d) -> {
+			if (Math.abs(n.xpos - parent.xpos) > 1 || Math.abs(n.ypos - parent.ypos) > 1) {
+				return;//связь через край замкнутого мира — линию через весь экран не рисуем
+			}
+			int half = Constant.size / 2;
+			g.drawLine(n.x + half, n.y + half, parent.x + half, parent.y + half);
+		});
+	}
+	//
+	public void set_queen(Bot queen_bot, Bot b, int distance) {//b — откуда начинается призыв, distance — его расстояние до королевы
+		if (distance < 1) {//дистанция 0 — это сама королева
 			b.queen = 1;
+			b.queen_bot = null;
 		}
-		if(distance < max_radius) {//остальные подчиненные в указанном радиусе
-			if(distance > 0) {
-				b.queen = 2;
-				b.queen_bot = queen_bot;
-			}
-			for (int i = 0; i < 8; i++) {
-				int[] pos = b.get_rotate_position(i);
-				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						//
-						if(map[pos[0]][pos[1]].queen == 0) {
-							if (!map[pos[0]][pos[1]].chain[i]) {
-								//chain[rot] = true;
-								map[pos[0]][pos[1]].chain[(i + 4) % 8] = true;
-							}
-							set_queen(queen_bot,map[pos[0]][pos[1]], distance+1);
-							distance--;
-						}
-					}
-				}
-
-//				if (b.chain[i]) {
-//					int[] pos = b.get_rotate_position(i);
-//					if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-//						if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-//							//
-//							if(map[pos[0]][pos[1]].queen == 0) {
-//								set_queen(queen_bot,map[pos[0]][pos[1]], distance++);						
-//							}
-//						}
-//					}
-//				}
-			}		
-		}
+		//вербуются только связанные цепочкой свободные клетки; через своих подчиненных призыв проходит дальше
+		walk_chain(b, distance, Constant.queen_max_radius, n -> n.queen == 0 || (n.queen == 2 && n.queen_bot == queen_bot), (n, parent, d) -> {
+			n.queen = 2;
+			n.queen_bot = queen_bot;
+		});
 	}
 	//
-	public void queen_orders_eq_distance(Bot queen_bot, Bot b, int distance, int distance_todo, int command) {
-		int max_radius = Constant.queen_max_radius;
-		if(distance > 0 && distance < max_radius) {//остальные подчиненные в указанном радиусе
-			for (int i = 0; i < 8; i++) {
-				int[] pos = b.get_rotate_position(i);
-				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						//
-						if (queen_bot.equals(b.queen_bot)) {
-							if(distance == distance_todo && map[pos[0]][pos[1]].queen == 2 && map[pos[0]][pos[1]].chain[(i+4)%8]) {
-								map[pos[0]][pos[1]].queen_command = command;
-							}
-							queen_orders_eq_distance(queen_bot,map[pos[0]][pos[1]], distance+1,distance_todo,command);
-							distance--;
-						}
-					}
-				}
+	public void queen_orders(int distance_todo, int command, int compare) {//приказ подчиненным: compare 0 — на дистанции, 1 — за ней, -1 — перед ней
+		walk_chain(this, 0, Constant.queen_max_radius, n -> n.queen == 2 && n.queen_bot == this, (n, parent, d) -> {
+			if (Integer.signum(Integer.compare(d, distance_todo)) == compare) {
+				n.queen_command = command;
 			}
-		}
-	}
-	//
-	public void queen_orders_lg_distance(Bot queen_bot, Bot b, int distance, int distance_todo, int command) {
-		int max_radius = Constant.queen_max_radius;
-		if(distance > 0 && distance < max_radius) {//остальные подчиненные в указанном радиусе
-			for (int i = 0; i < 8; i++) {
-				int[] pos = b.get_rotate_position(i);
-				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						//
-						if (queen_bot.equals(b.queen_bot)) {
-							if(distance > distance_todo && map[pos[0]][pos[1]].queen == 2 && map[pos[0]][pos[1]].chain[(i+4)%8]) {
-								map[pos[0]][pos[1]].queen_command = command;
-							}
-							queen_orders_lg_distance(queen_bot,map[pos[0]][pos[1]], distance+1,distance_todo,command);
-							distance--;
-						}
-					}
-				}
-			}
-		}
-	}
-	//
-	public void queen_orders_ls_distance(Bot queen_bot, Bot b, int distance, int distance_todo, int command) {
-		int max_radius = Constant.queen_max_radius;
-		if(distance > 0 && distance < max_radius) {//остальные подчиненные в указанном радиусе
-			for (int i = 0; i < 8; i++) {
-				int[] pos = b.get_rotate_position(i);
-				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						//
-						if (queen_bot.equals(b.queen_bot)) {
-							if(distance < distance_todo && map[pos[0]][pos[1]].queen == 2 && map[pos[0]][pos[1]].chain[(i+4)%8]) {
-								map[pos[0]][pos[1]].queen_command = command;
-							}
-							queen_orders_ls_distance(queen_bot,map[pos[0]][pos[1]], distance+1,distance_todo,command);
-							distance--;
-						}
-					}
-				}
-			}
-		}
+		});
 	}
 	//
 	public int see(int rot) {
@@ -973,19 +929,13 @@ public class Bot extends BotSuper {
 //					new_bot.commands = new_brain;
 					new_bot.genom_array = new_brain;
 					new_bot.set_current_genom(genom_current_idx);//потомок продолжает с того же генома, что и родитель
-					if(queen > 0) {
-						//new_bot.queen = queen;
-						//new_bot.queen_bot = queen_bot;
-						new_bot.chain[(rot + 4) % 8] = true;
-					}
-					
 					new_bot.clan_color = clan_color;
 					//
 					if (seed == 1) {
 						new_bot.state = 1;
 						new_bot.seed_time = time;
 						new_bot.rotate = rot;
-					}else if (ch) {
+					}else if (ch || queen > 0) {//у королевы и подчиненных потомок сразу в цепочке, связь с обеих сторон
 						chain[rot] = true;
 						new_bot.chain[(rot + 4) % 8] = true;
 					}

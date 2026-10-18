@@ -727,7 +727,7 @@ public class World extends JPanel{
 			bufferedWriter.write(";");
 			for(Bot b: objects) {//                                                   длина бота - 82
 				bufferedWriter.write(String.valueOf(b.energy) + "'");//               0 - энергия
-				bufferedWriter.write(String.valueOf(b.age) + "'");//                  1 - возраст
+				bufferedWriter.write(String.valueOf((int) b.age) + "'");//                  1 - возраст
 				bufferedWriter.write(String.valueOf(b.xpos) + "'");//                 2 - позиция x
 				bufferedWriter.write(String.valueOf(b.ypos) + "'");//                 3 - позиция y
 				bufferedWriter.write(String.valueOf(b.rotate) + "'");//               4 - направление

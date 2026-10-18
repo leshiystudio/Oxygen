@@ -144,7 +144,7 @@ public class WorldBioControler extends JPanel{
         int y = 35*23+15;
         if (s != null) {
         	canvas.drawString("selection: [" + s.xpos + ", " + s.ypos + "]", 5, y);
-        	canvas.drawString("energy: " + String.valueOf((int)s.energy) + ", age: " + s.age, 5, y + 20);
+        	canvas.drawString("energy: " + String.valueOf((int)s.energy) + ", age: " + (int) s.age, 5, y + 20);
         	canvas.drawString("type: " + s.type + ", memory: " + s.memory + ", queen: " + s.queen, 5, y + 40);
         	canvas.drawString("color: (" + s.color.getRed() + ", " + s.color.getGreen() + ", " + s.color.getBlue() + ")", 5, y + 60);
         	canvas.setColor(s.color);

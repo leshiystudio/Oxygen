@@ -174,7 +174,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			if (draw_type == 7) {//связи королев с подчиненными
 				for(Bot b: objects) {
 					if (b.queen == 1) {
-						b.queen_draw(g2dTail, b, b, 1);
+						b.queen_draw(g2dTail);
 					}
 				}
 			}
