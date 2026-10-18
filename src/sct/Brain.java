@@ -15,4 +15,7 @@ public interface Brain<B extends IBot> {
 	default Brain<B> child(B parent) {//мозг потомка; алгоритм без состояния просто передается
 		return this;
 	}
+	default Brain<B> spawn() {//мозг существа при создании мира (нейросеть — своя случайная сеть у каждого)
+		return this;
+	}
 }

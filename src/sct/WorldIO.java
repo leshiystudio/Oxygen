@@ -25,14 +25,15 @@ import sct.plants.PlantWorld;
 
 //Сохранение и загрузка мира (.oxw — двоичный формат, сжатый gzip).
 //
-//Версия 2 (сохраняется сейчас): настройки мира текстом (популяции, взаимодействия, параметры Constant
+//Версия 3 (сохраняется сейчас) = версия 2 + веса и память нейросети каждого существа.
+//Версия 2: настройки мира текстом (популяции, взаимодействия, параметры Constant
 //и растений — как в диалоге «Новый мир»), карты, все существа в порядке списка мира (вид, популяция,
 //поля) и состояние генераторов случайных чисел — загруженный мир продолжается так же, как
 //продолжился бы без сохранения. Параметры при загрузке берутся из файла.
 //Версия 1 (раньше): только боты Oxygen, параметры — текущие; загружается в первую популяцию ботов.
 public class WorldIO {
 	private static final int magic = 0x4F585957;//"OXYW"
-	private static final int version = 2;
+	private static final int version = 3;
 	private static final int KIND_BOT = 0, KIND_PLANT = 1;
 	//
 	public static void save(WorldBio w, File file) throws IOException {
@@ -57,6 +58,7 @@ public class WorldIO {
 			write_random(out, WorldUtils.rand);
 			write_random(out, w.rand);
 			write_random(out, PlantWorld.rand);
+			write_random(out, sct.neuro.NeuroBrain.rand);
 			write_map(out, w.oxygen_map);
 			write_map(out, w.co2_map);
 			write_map(out, w.org_map);
@@ -80,8 +82,10 @@ public class WorldIO {
 				out.writeInt(o.population() == null ? -1 : o.population().id);
 				if (o instanceof Plant p) {
 					p.save(out);
+					write_brain(out, p.brain);
 				}else {
 					((Bot) o).save(out, ids);
+					write_brain(out, ((Bot) o).brain);
 				}
 			}
 		}finally {
@@ -97,8 +101,8 @@ public class WorldIO {
 			int ver = in.readInt();
 			if (ver == 1) {
 				load_v1(w, in);
-			}else if (ver == 2) {
-				load_v2(w, in);
+			}else if (ver == 2 || ver == 3) {
+				load_v2(w, in, ver == 3);
 			}else {
 				throw new IOException("версия файла " + ver + ", поддерживаются 1 и 2");
 			}
@@ -107,7 +111,7 @@ public class WorldIO {
 		}
 	}
 	//
-	private static void load_v2(WorldBio w, DataInputStream in) throws IOException, ClassNotFoundException {
+	private static void load_v2(WorldBio w, DataInputStream in, boolean brains) throws IOException, ClassNotFoundException {
 		byte[] text = new byte[in.readInt()];
 		in.readFully(text);
 		WorldSettings ws = WorldSettings.from_text(new String(text, java.nio.charset.StandardCharsets.UTF_8));
@@ -123,6 +127,7 @@ public class WorldIO {
 			int steps = in.readInt();
 			int population = in.readInt();
 			Random r_bot = read_random(in), r_utils = read_random(in), r_world = read_random(in), r_plant = read_random(in);
+			Random r_neuro = brains ? read_random(in) : null;
 			double[][] ox = read_map(in, ww, wh), co2 = read_map(in, ww, wh), org = read_map(in, ww, wh), mnr = read_map(in, ww, wh);
 			int[][] height = new int[ww][wh];
 			for (int x = 0; x < ww; x++) {
@@ -140,12 +145,12 @@ public class WorldIO {
 				if (p.species == Species.PLANT) {
 					p.plant_world = new PlantWorld(map, org, mnr, objects, p.plant_config);
 					p.plant_world.pop = p;
-					p.plant_brain = p.brain.equals("think_old") ? sct.plants.ThinkOld.instance : sct.plants.ThinkNew.instance;
+					p.plant_brain = Brains.make_plant_brain(p);
 					if (first_plants == null) {
 						first_plants = p.plant_world;
 					}
 				}else {
-					p.bot_brain = Brains.bot_brain(p.brain);
+					p.bot_brain = Brains.make_bot_brain(p);
 				}
 			}
 			int n = in.readInt();
@@ -157,11 +162,18 @@ public class WorldIO {
 				Population p = pid >= 0 ? pops.get(pid) : null;
 				IBot o;
 				if (kind == KIND_PLANT) {
-					o = Plant.load(in, p.plant_world, p.plant_brain);
+					Plant plant = Plant.load(in, p.plant_world, p.plant_brain);
+					if (brains) {
+						plant.brain = read_brain(in, p, sct.neuro.PlantBody.instance, p.plant_brain);
+					}
+					o = plant;
 				}else {
 					Bot b = Bot.load(in, ox, co2, org, map, objects);
 					b.pop = p;
 					b.brain = p != null ? p.bot_brain : null;
+					if (brains) {
+						b.brain = read_brain(in, p, sct.neuro.BotBody.instance, b.brain);
+					}
 					queen_refs[i] = b.load_queen_ref;
 					o = b;
 				}
@@ -184,6 +196,9 @@ public class WorldIO {
 			WorldUtils.rand = r_utils;
 			w.rand = r_world;
 			PlantWorld.rand = r_plant;
+			if (r_neuro != null) {
+				sct.neuro.NeuroBrain.rand = r_neuro;
+			}
 			Ledger.reset(w);
 			History.clear();
 			KinClans.update(w);
@@ -260,6 +275,20 @@ public class WorldIO {
 		w.prev_selection = null;
 	}
 	//
+	private static void write_brain(DataOutputStream out, Brain<?> brain) throws IOException {//1 — нейросеть (веса и память), 0 — нет
+		if (brain instanceof sct.neuro.NeuroBrain<?> nb) {
+			out.writeInt(1);
+			nb.write(out);
+		}else {
+			out.writeInt(0);
+		}
+	}
+	private static <B extends IBot> Brain<B> read_brain(DataInputStream in, Population p, sct.neuro.NeuroBody<B> body, Brain<B> fallback) throws IOException {
+		if (in.readInt() == 0) {
+			return fallback;
+		}
+		return sct.neuro.NeuroBrain.read(in, p.neuro_config(), body);
+	}
 	private static void write_map(DataOutputStream out, double[][] m) throws IOException {
 		for (double[] row : m) {
 			for (double v : row) {

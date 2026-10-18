@@ -127,6 +127,13 @@ public class WorldSettings {
 					}
 				}
 			}
+			if (p.neuro_config != null) {
+				for (Field f : sct.neuro.NeuroConfig.class.getFields()) {
+					if (!Modifier.isStatic(f.getModifiers())) {
+						pr.put(k + "neuro." + f.getName(), field_value(f, p.neuro_config));
+					}
+				}
+			}
 		}
 		for (int a = 0; a < populations.size(); a++) {
 			for (int b = 0; b < populations.size(); b++) {
@@ -171,6 +178,11 @@ public class WorldSettings {
 						if (key.startsWith(k + "plant.")) {
 							p.plant_config.set(key.substring((k + "plant.").length()), pr.getProperty(key));
 						}
+					}
+				}
+				for (String key : pr.stringPropertyNames()) {
+					if (key.startsWith(k + "neuro.")) {
+						p.neuro_config().set(key.substring((k + "neuro.").length()), pr.getProperty(key));
 					}
 				}
 				s.populations.add(p);
@@ -245,6 +257,9 @@ public class WorldSettings {
 		Population c = new Population(p.name, p.species, p.brain, p.count, p.color);
 		c.id = p.id;
 		c.actions_on = p.actions_on.clone();
+		if (p.neuro_config != null) {
+			c.neuro_config = p.neuro_config.copy();
+		}
 		if (p.plant_config != null) {
 			c.plant_config = new PlantConfig();
 			for (Field f : PlantConfig.class.getFields()) {

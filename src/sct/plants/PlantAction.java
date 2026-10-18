@@ -72,9 +72,11 @@ public enum PlantAction implements Action<Plant> {
 	public boolean enabled() {
 		return on[ordinal()];
 	}
+	public boolean enabled_for(Plant body) {//галочка популяции растения (или общая, вне популяций)
+		return body.w.pop != null ? body.w.pop.on(ordinal()) : on[ordinal()];
+	}
 	public boolean run(Plant body, ListIterator<IBot> iterator, int... args) {
-		boolean enabled = body.w.pop != null ? body.w.pop.on(ordinal()) : on[ordinal()];
-		if (!enabled || body.killed != 0) {
+		if (!enabled_for(body) || body.killed != 0) {
 			return false;
 		}
 		return act(body, iterator, args);

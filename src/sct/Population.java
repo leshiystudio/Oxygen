@@ -14,6 +14,7 @@ public class Population {
 	public Color color;//цвет популяции (режим отрисовки «популяции», легенда графиков)
 	public boolean[] actions_on;//включенные действия тела (BotAction или PlantAction по ordinal)
 	public sct.plants.PlantConfig plant_config;//настройки растений (у популяций растений)
+	public sct.neuro.NeuroConfig neuro_config;//настройки нейросети (у популяций с мозгом neuro)
 	//
 	//во время работы мира
 	public transient Brain<Bot> bot_brain;
@@ -34,6 +35,12 @@ public class Population {
 		}
 	}
 	//
+	public sct.neuro.NeuroConfig neuro_config() {//создается при первом обращении — мозг могли сменить на neuro
+		if (neuro_config == null) {
+			neuro_config = sct.neuro.NeuroConfig.current.copy();
+		}
+		return neuro_config;
+	}
 	public boolean on(int action_ordinal) {
 		return actions_on[action_ordinal];
 	}
@@ -66,12 +73,13 @@ public class Population {
 	//популяции по умолчанию — из параметров командной строки (starting_bot_count, starting_plant_count ...)
 	public static java.util.List<Population> defaults() {
 		java.util.List<Population> list = new java.util.ArrayList<Population>();
-		Population bots = new Population("Oxygen bots", Species.OXYGEN_BOT, Constant.bot_brain, Constant.starting_bot_count, new Color(80, 160, 255));
+		Population bots = new Population(Constant.bot_brain.equals(Brains.NEURO) ? "Neuro bots" : "Oxygen bots", Species.OXYGEN_BOT, Constant.bot_brain, Constant.starting_bot_count, new Color(80, 160, 255));
 		bots.actions_off(Constant.bot_actions_off);
 		list.add(bots);
 		if (Constant.starting_plant_count > 0) {
 			Population plants = new Population("Plants", Species.PLANT,
-				sct.plants.PlantConfig.current.think_mode == sct.plants.PlantConfig.THINK_OLD ? "think_old" : "think_new",
+				!Constant.plant_brain.isEmpty() ? Constant.plant_brain
+					: sct.plants.PlantConfig.current.think_mode == sct.plants.PlantConfig.THINK_OLD ? "think_old" : "think_new",
 				Constant.starting_plant_count, new Color(40, 200, 90));
 			plants.plant_config = sct.plants.PlantConfig.current;
 			plants.actions_off(Constant.plant_actions_off);

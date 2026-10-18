@@ -841,6 +841,10 @@ public class Bot extends BotSuper {
 			return(5);//королева
 		}else if (b.queen == 2) {
 			return(6);//подчиненная
+		}else if ((brain instanceof sct.neuro.NeuroBrain) != (b.brain instanceof sct.neuro.NeuroBrain)) {
+			return(8);//бот с другим мозгом (нейро-бот для бота с геномом и наоборот)
+		}else if (brain instanceof sct.neuro.NeuroBrain<?> nb && nb.c.kin_by_weights && same_population(b)) {
+			return nb.same_kin((sct.neuro.NeuroBrain<?>) b.brain) ? 2 : 4;//родство нейро-ботов — по весам сети
 		}else if (count_different_genom(genom_array, b.genom_array) <= Constant.max_different_genom) {
 			return(2);//родственник
 		}else {

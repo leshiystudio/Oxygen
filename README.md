@@ -23,7 +23,7 @@
 Нужна Java 21+ (проверено на JDK 23). Внешних библиотек нет.
 
 ```bash
-javac -encoding UTF-8 -d out src/sct/*.java src/sct/plants/*.java
+javac -encoding UTF-8 -d out src/sct/*.java src/sct/plants/*.java src/sct/neuro/*.java
 java -cp out sct.Main                                   # окно
 java -cp out sct.Main --preset small --seed 7           # маленький мир, воспроизводимый
 java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
@@ -91,6 +91,21 @@ java -cp out sct.Main --set starting_plant_count=1500 --set plant_preset=origina
 Мозг: `plant.think_mode=0` (THINK_NEW) или `1` (THINK_OLD). Действия ростка выключаются:
 `--set plant_actions_off=eat,move`. Сохранение мира с растениями — в следующем этапе.
 
+## Нейросеть (NeuroBot, NeuroPlant)
+
+Мозг `neuro` подходит и ботам, и растениям: у каждого существа своя сеть, потомок получает копию
+с мутацией (нейроэволюция). Входы — датчики тела, выходы — включенные у популяции действия,
+направление и параметры. Настройки сети — у популяции (вкладка **Neuro** диалога «Новый мир»):
+скрытые слои, активация, память, выбор действия (argmax/softmax), мутации, «свой/чужой» по весам,
+выключенные датчики.
+
+```bash
+java -cp out sct.Main --set bot_brain=neuro --set neuro.hidden=24,8                   # нейро-боты
+java -cp out sct.Main --set starting_bot_count=0 --set starting_plant_count=1500 --set plant_brain=neuro
+```
+
+Бот с геномом видит нейро-бота (и наоборот) командой «посмотреть» как код 8.
+
 ## Действия и свои алгоритмы
 
 Действия тела бота — `BotAction`: `turn, set_dir, random_dir, move, photo, recycle, attack,
@@ -107,7 +122,7 @@ give, share, divide, seed, chain_divide, chain_link, queen_call, queen_become, q
 ## Проверки и замеры
 
 ```bash
-javac -encoding UTF-8 -d out src/sct/*.java src/sct/plants/*.java test/sct/*.java
+javac -encoding UTF-8 -d out src/sct/*.java src/sct/plants/*.java src/sct/neuro/*.java test/sct/*.java
 java -Djava.awt.headless=true -cp out sct.SelfTest                       # самопроверка, код выхода 0 — всё прошло
 java -Djava.awt.headless=true -cp out sct.GoldenTest                     # эталон: правила ботов Oxygen не изменились
 java -Djava.awt.headless=true -cp out sct.Bench --steps 1000 --seed 1 --csv metrics.csv

@@ -51,7 +51,8 @@ public class Constant {
 	public static String bot_actions_off = "";//выключенные действия бота через запятую (BotAction), например "attack,seed"
 	public static String bot_brain = "genome";//мозг ботов (Brains): genome — геном команд
 	public static int mineral_influx = -1;//случайный приток минералов в нижнюю четверть мира: 1 — да, 0 — нет, -1 — только в мире без растений
-	public static String plant_actions_off = "";//выключенные действия растений (PlantAction), например "eat,move"
+	public static String plant_actions_off = "";
+	public static String plant_brain = "";//мозг растений: think_new, think_old, neuro; пусто — по plant.think_mode//выключенные действия растений (PlantAction), например "eat,move"
 	//
 	public static double pht_coeff = 110; //400;
 	public static int[] pht_energy_list = {12, 11, 10, 9, 8, 7, 6, 5};

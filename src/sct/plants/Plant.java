@@ -98,6 +98,9 @@ public class Plant extends BotSuper {
 			return true;
 		}
 		Plant p = (Plant) o;
+		if (brain instanceof sct.neuro.NeuroBrain<?> nb && nb.c.kin_by_weights && p.brain instanceof sct.neuro.NeuroBrain<?> other) {
+			return !nb.same_kin(other);//родство NeuroPlant — по весам сети
+		}
 		if (p.ghash == ghash) {
 			return false;
 		}
@@ -492,6 +495,9 @@ public class Plant extends BotSuper {
 			return is_alive_type(type_at(h)) && !is_enemy(o);
 		}
 		return false;
+	}
+	public boolean check(int k) {//проверки check_list — для нейросети и своих алгоритмов
+		return check_list(k);
 	}
 	public int gcmd(int idx) {//команда idx активного гена
 		PlantConfig c = w.c;

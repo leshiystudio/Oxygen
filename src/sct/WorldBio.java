@@ -397,7 +397,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		repaint();
 	}
 	private void spawn_bots(Population p) {//боты популяции p — как раньше newPopulation
-		Brain<Bot> brain = Brains.bot_brain(p.brain);
+		Brain<Bot> brain = Brains.make_bot_brain(p);
 		p.bot_brain = brain;
 		{
 			for (int i = 0; i < p.count; i++) {
@@ -417,7 +417,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 							Map,
 							objects
 						);
-						new_bot.brain = brain;
+						new_bot.brain = brain == null ? null : brain.spawn();//нейросеть — своя у каждого
 						new_bot.pop = p;
 						objects.add(new_bot);
 						Map[x][y] = new_bot;
@@ -456,7 +456,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			if (plants == null) {
 				plants = pw;
 			}
-			Brain<sct.plants.Plant> brain = p.brain.equals("think_old") ? sct.plants.ThinkOld.instance : sct.plants.ThinkNew.instance;
+			Brain<sct.plants.Plant> brain = Brains.make_plant_brain(p);
 			p.plant_brain = brain;
 			int created = 0;
 			int tries = 0;
@@ -468,7 +468,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 				if (Map[x][y] != null) {
 					continue;
 				}
-				sct.plants.Plant plant = sct.plants.Plant.seedling(pw, x, y, brain);
+				sct.plants.Plant plant = sct.plants.Plant.seedling(pw, x, y, brain.spawn());
 				objects.add(plant);
 				Map[x][y] = plant;
 				created++;

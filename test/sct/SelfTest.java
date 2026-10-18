@@ -32,6 +32,7 @@ public class SelfTest {
 		mixed_world();
 		interactions();
 		world_settings();
+		neuro();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -463,6 +464,95 @@ public class SelfTest {
 		}
 		check("this world runs, balance holds", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
 		Interaction.current = new Interaction(0);
+		Presets.seed = -1;
+	}
+	//
+	private static void neuro() {
+		System.out.println("neuro:");
+		Presets.seed = 21;
+		Constant.bot_brain = Brains.NEURO;
+		WorldBio w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("world of neuro bots lives (" + w.b_count + " bots)", w.b_count > 0);
+		check("energy balance holds with neuro bots", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		//наследование сети
+		Bot parent = null;
+		for (IBot o : w.objects) {
+			if (o instanceof Bot b && b.state == 0) {
+				parent = b;
+				break;
+			}
+		}
+		sct.neuro.NeuroBrain<Bot> nb = (sct.neuro.NeuroBrain<Bot>) parent.brain;
+		double saved_chance = nb.c.mutation_chance;
+		nb.c.mutation_chance = 0;
+		sct.neuro.NeuroBrain<Bot> same = (sct.neuro.NeuroBrain<Bot>) nb.child(parent);
+		nb.c.mutation_chance = 1;
+		nb.c.mutation_rate = 1;
+		sct.neuro.NeuroBrain<Bot> mutated = (sct.neuro.NeuroBrain<Bot>) nb.child(parent);
+		nb.c.mutation_chance = saved_chance;
+		nb.c.mutation_rate = 0.05;
+		check("child without mutation has the same network", nb.net.distance(same.net) == 0 && same.net != nb.net);
+		check("mutated child network differs", nb.net.distance(mutated.net) > 0);
+		//только включенные действия: оставить один фотосинтез
+		Constant.bot_actions_off = "turn,set_dir,random_dir,move,recycle,attack,give,share,divide,seed,chain_divide,chain_link,queen_call,queen_become,queen_order";
+		w = new WorldBio(false);
+		int attackers = 0, eaten = 0;
+		for (int i = 0; i < 100; i++) {
+			w.step();
+			eaten += Ledger.deaths[Ledger.DIE_EATEN];
+		}
+		for (IBot o : w.objects) {
+			if (o instanceof Bot b && b.c_red == 255 && b.c_green == 0) {
+				attackers++;//go_red() после атаки — следа быть не должно
+			}
+		}
+		check("neuro bot uses only enabled actions (no attacks)", eaten == 0 && attackers == 0);
+		Constant.bot_actions_off = "";
+		//смешанный мир нейро-ботов и нейро-растений: сохранение версии 3
+		Constant.starting_plant_count = 200;
+		Constant.plant_brain = Brains.NEURO;
+		w = new WorldBio(false);
+		for (int i = 0; i < 40; i++) {
+			w.step();
+		}
+		try {
+			File f = File.createTempFile("oxygen_selftest", ".oxw");
+			f.deleteOnExit();
+			WorldIO.save(w, f);
+			long saved = state_hash(w);
+			for (int i = 0; i < 40; i++) {
+				w.step();
+			}
+			long continued = state_hash(w);
+			WorldIO.load(w, f);
+			check("neuro world: loaded state equals saved", state_hash(w) == saved);
+			for (int i = 0; i < 40; i++) {
+				w.step();
+			}
+			check("neuro world: continues the same way after load (weights saved)", state_hash(w) == continued);
+		}catch (java.io.IOException e) {
+			check("neuro world save/load: " + e, false);
+		}
+		//настройки сети в файле настроек
+		WorldSettings ws = WorldSettings.capture();
+		ws.populations.get(0).neuro_config().hidden = "24,8";
+		ws.populations.get(0).neuro_config().choice = "softmax";
+		try {
+			File f = File.createTempFile("oxygen_selftest", ".properties");
+			f.deleteOnExit();
+			ws.save(f);
+			WorldSettings back = WorldSettings.load(f);
+			check("network settings survive save/load", back.populations.get(0).neuro_config().hidden.equals("24,8")
+				&& back.populations.get(0).neuro_config().choice.equals("softmax"));
+		}catch (java.io.IOException e) {
+			check("network settings save/load: " + e, false);
+		}
+		Constant.bot_brain = "genome";
+		Constant.plant_brain = "";
+		Constant.starting_plant_count = 0;
 		Presets.seed = -1;
 	}
 	//

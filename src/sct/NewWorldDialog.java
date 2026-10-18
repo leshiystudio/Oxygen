@@ -77,6 +77,10 @@ public class NewWorldDialog extends JDialog {
 		private final ParamTable plant_table = new ParamTable();
 		private final JPanel plant_actions = new JPanel(new GridLayout(0, 2, 4, 2));
 		private Population plant_shown;//чьи параметры сейчас в plant_table
+		private final JComboBox<Population> neuro_pop_box = new JComboBox<Population>();
+		private final ParamTable neuro_table = new ParamTable();
+		private final javax.swing.JTextArea neuro_sensors = new javax.swing.JTextArea();
+		private Population neuro_shown;//чьи параметры сейчас в neuro_table
 		//в диалоге это задают популяции (численность, мозг, действия) — в таблице параметров не показываются
 		private static final java.util.Set<String> by_populations = java.util.Set.of(
 			"starting_bot_count", "starting_plant_count", "bot_brain", "bot_actions_off", "plant_actions_off");
@@ -193,10 +197,52 @@ public class NewWorldDialog extends JDialog {
 			return wrap;
 		}
 		private JPanel neuro_tab() {
-			JPanel p = new JPanel(new BorderLayout());
-			p.add(new JLabel("<html><b>Neuro populations</b> (NeuroBot, NeuroPlant) — next stage: network layout, sensors, actions,"
-				+ " mutation and kin threshold will be configured here.</html>"), BorderLayout.NORTH);
+			JPanel p = new JPanel(new BorderLayout(6, 6));
+			JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			top.add(new JLabel("population with brain 'neuro'"));
+			top.add(neuro_pop_box);
+			top.add(new JLabel("   actions — on the tab of its body (Oxygen bots / Plants)"));
+			p.add(top, BorderLayout.NORTH);
+			JPanel center = new JPanel(new BorderLayout());
+			center.setBorder(BorderFactory.createTitledBorder("Network: hidden layers, activation, memory, choice, mutation, kin"));
+			center.add(neuro_table, BorderLayout.CENTER);
+			p.add(center, BorderLayout.CENTER);
+			JPanel right = new JPanel(new BorderLayout());
+			right.setBorder(BorderFactory.createTitledBorder("Sensors (names for sensors_off)"));
+			neuro_sensors.setEditable(false);
+			right.add(new JScrollPane(neuro_sensors), BorderLayout.CENTER);
+			right.setPreferredSize(new Dimension(300, 100));
+			p.add(right, BorderLayout.EAST);
+			neuro_pop_box.addActionListener(e -> {
+				store_neuro_params();
+				show_neuro_params((Population) neuro_pop_box.getSelectedItem());
+			});
 			return p;
+		}
+		private void show_neuro_params(Population pop) {
+			neuro_shown = pop;
+			List<String[]> rows = new ArrayList<String[]>();
+			StringBuilder sensors = new StringBuilder();
+			if (pop != null) {
+				for (Field f : sct.neuro.NeuroConfig.class.getFields()) {
+					if (!Modifier.isStatic(f.getModifiers())) {
+						rows.add(new String[]{f.getName(), WorldSettings.field_value(f, pop.neuro_config())});
+					}
+				}
+				String[] names = pop.species == Species.PLANT ? sct.neuro.PlantBody.instance.inputs() : sct.neuro.BotBody.instance.inputs();
+				for (String n : names) {
+					sensors.append(n).append(System.lineSeparator());
+				}
+			}
+			neuro_table.set_rows(rows);
+			neuro_sensors.setText(sensors.toString());
+		}
+		private void store_neuro_params() {
+			if (neuro_shown != null) {
+				for (Map.Entry<String, String> e : neuro_table.values().entrySet()) {
+					neuro_shown.neuro_config().set(e.getKey(), e.getValue());
+				}
+			}
 		}
 		private JPanel buttons() {
 			JPanel p = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -237,6 +283,7 @@ public class NewWorldDialog extends JDialog {
 			}
 			constants_table.set_rows(rows);
 			plant_shown = null;
+			neuro_shown = null;
 			populations_changed();
 		}
 		private void populations_changed() {//после правки списка популяций — обновить таблицы и выпадающие списки
@@ -247,9 +294,21 @@ public class NewWorldDialog extends JDialog {
 			populations_model.fireTableDataChanged();
 			interaction_model.fireTableDataChanged();
 			store_plant_params();
+			store_neuro_params();
 			plant_shown = null;
+			neuro_shown = null;
 			fill_box(bot_pop_box, Species.OXYGEN_BOT);
 			fill_box(plant_pop_box, Species.PLANT);
+			Object neuro_selected = neuro_pop_box.getSelectedItem();
+			neuro_pop_box.removeAllItems();
+			for (Population p : s.populations) {
+				if (p.brain.equals(Brains.NEURO)) {
+					neuro_pop_box.addItem(p);
+				}
+			}
+			if (neuro_selected != null && s.populations.contains(neuro_selected)) {
+				neuro_pop_box.setSelectedItem(neuro_selected);
+			}
 		}
 		private void fill_box(JComboBox<Population> box, Species sp) {
 			Object selected = box.getSelectedItem();
@@ -313,6 +372,7 @@ public class NewWorldDialog extends JDialog {
 			s.constants.putAll(constants_table.values());
 			s.seed = Long.parseLong(field_seed.getText().trim());
 			store_plant_params();
+			store_neuro_params();
 		}
 		//
 		//КНОПКИ
@@ -452,13 +512,8 @@ public class NewWorldDialog extends JDialog {
 			public Component getTableCellEditorComponent(JTable t, Object value, boolean sel, int row, int col) {
 				box.removeAllItems();
 				Population p = s.populations.get(row);
-				if (p.species == Species.PLANT) {
-					box.addItem("think_new");
-					box.addItem("think_old");
-				}else {
-					for (String b : Brains.for_bot.keySet()) {
-						box.addItem(b);
-					}
+				for (String b : p.species == Species.PLANT ? Brains.plant_brains : Brains.bot_brain_names()) {
+					box.addItem(b);
 				}
 				box.setSelectedItem(value);
 				return box;
