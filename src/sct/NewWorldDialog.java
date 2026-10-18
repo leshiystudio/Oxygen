@@ -414,12 +414,35 @@ public class NewWorldDialog extends JDialog {
 		private void create() {
 			try {
 				store_ui();
+				String warning = check_settings();
+				if (warning != null && JOptionPane.showConfirmDialog(this, warning + System.lineSeparator() + System.lineSeparator() + "Создать мир все равно?", "Проверка настроек",
+						JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
+					return;
+				}
 				s.copy().apply(world);
 				world.last_settings = s.copy();//запоминаются только настройки, с которыми мир создался
 				close.run();
 			}catch (RuntimeException e) {
 				JOptionPane.showMessageDialog(this, "Не удалось создать мир: " + e.getMessage());
 			}
+		}
+		//настройки, с которыми популяция заведомо не выживет; null — все в порядке
+		private String check_settings() {
+			StringBuilder sb = new StringBuilder();
+			for (Population p : s.populations) {
+				if (p.species == Species.PLANT && p.count > 0) {
+					PlantConfig c = p.plant_config;
+					int need = c.cost_birth + c.birth_min_energy;
+					if (need > c.energy_start_value) {
+						sb.append("«").append(p.name).append("»: росток рождается с энергией ").append(c.energy_start_value)
+							.append(", а для деления нужно cost_birth + birth_min_energy = ").append(need)
+							.append(". Ростки не фотосинтезируют (это делают листья), поэтому первое поколение не сможет")
+							.append(" размножиться и вымрет. Уменьшите cost_birth (до ").append(c.energy_start_value - c.birth_min_energy)
+							.append(") или увеличьте energy_start_value.").append(System.lineSeparator());
+					}
+				}
+			}
+			return sb.length() == 0 ? null : sb.toString().trim();
 		}
 		private JFileChooser chooser() {
 			JFileChooser fc = new JFileChooser(new File("saved worlds"));
