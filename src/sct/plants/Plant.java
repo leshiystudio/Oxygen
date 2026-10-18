@@ -721,6 +721,40 @@ public class Plant extends BotSuper {
 		Ledger.out_soil_decay += lost;
 	}
 	//
+	//СОХРАНЕНИЕ (WorldIO, формат 2)
+	//
+	public void save(java.io.DataOutputStream out) throws java.io.IOException {
+		out.writeInt(xpos);
+		out.writeInt(ypos);
+		for (int v : new int[]{type, energy, health, age, cmd, gen, head, dpar, dmask, ina, inb, color, ghash}) {
+			out.writeInt(v);
+		}
+		out.writeInt(genome.length);
+		out.write(genome);
+	}
+	public static Plant load(java.io.DataInputStream in, PlantWorld w, Brain<Plant> brain) throws java.io.IOException {
+		Plant p = new Plant(w, in.readInt(), in.readInt(), brain);
+		p.type = in.readInt();
+		p.energy = in.readInt();
+		p.health = in.readInt();
+		p.age = in.readInt();
+		p.cmd = in.readInt();
+		p.gen = in.readInt();
+		p.head = in.readInt();
+		p.dpar = in.readInt();
+		p.dmask = in.readInt();
+		p.ina = in.readInt();
+		p.inb = in.readInt();
+		p.color = in.readInt();
+		p.ghash = in.readInt();
+		int n = in.readInt();
+		if (n != p.genome.length) {
+			throw new java.io.IOException("геном растения " + n + ", ожидалось " + p.genome.length);
+		}
+		in.readFully(p.genome);
+		return p;
+	}
+	//
 	//КОНТРАКТ IBot
 	//
 	public int Update(ListIterator<IBot> iterator) {//run_cells для одной клетки

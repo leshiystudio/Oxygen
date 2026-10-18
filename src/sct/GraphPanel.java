@@ -19,7 +19,7 @@ import javax.swing.Timer;
 public class GraphPanel extends JPanel {
 	private static final long serialVersionUID = 1L;
 	//
-	private static final String[] group_names = {"cells", "energy", "events/step", "deaths/step", "genomes", "gases", "ms/step", "queens", "plants"};
+	private static final String[] group_names = {"cells", "energy", "events/step", "deaths/step", "genomes", "gases", "ms/step", "queens", "plants", "populations"};
 	private static final int[][] group_series = {
 		{History.BOTS, History.SEEDS},
 		{History.ENERGY_CELLS, History.ORGANICS, History.ENERGY_TOTAL},
@@ -32,6 +32,7 @@ public class GraphPanel extends JPanel {
 		{History.MS},
 		{History.QUEENS, History.SUBS},
 		{History.PLANTS, History.CORPSES, History.SOIL},
+		{History.POP0, History.POP0 + 1, History.POP0 + 2, History.POP0 + 3, History.POP0 + 4, History.POP0 + 5, History.POP0 + 6, History.POP0 + 7},
 	};
 	private static final Color[] palette = {
 		new Color(80, 160, 255), new Color(255, 160, 60), new Color(90, 200, 120), new Color(230, 80, 90),
@@ -114,7 +115,11 @@ public class GraphPanel extends JPanel {
 		}
 		//
 		private void draw_group(Graphics2D g, int gi, int x0, int y0, int w, int h) {
-			int[] series = group_series[gi];
+			int[] series = java.util.Arrays.stream(group_series[gi])//колонки популяций, которых нет в мире, не рисуются
+				.filter(k -> !History.names[k].matches("pop [0-9]+")).toArray();
+			if (series.length == 0) {
+				return;
+			}
 			int len = lengths[length_idx];
 			double[][] values = new double[series.length][];
 			int first_step, last_step;

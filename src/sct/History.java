@@ -14,11 +14,17 @@ public class History {
 		"oxygen", "co2",
 		"ms/step", "balance diff",
 		"d: health", "d: branch lost", "d: toxic soil", "d: soil exhausted",
-		"plants", "plant corpses", "minerals (soil)"
+		"plants", "plant corpses", "minerals (soil)",
+		"pop 1", "pop 2", "pop 3", "pop 4", "pop 5", "pop 6", "pop 7", "pop 8"//подписи — имена популяций мира (name_populations)
 	};
 	public static final int BOTS = 0, SEEDS = 1, QUEENS = 2, SUBS = 3, ENERGY_CELLS = 4, ORGANICS = 5, ENERGY_TOTAL = 6,
 		BIRTHS = 7, DEATHS = 8, MUTATIONS = 9, DEATH_CAUSE0 = 10, UNIQUE = 18, CLANS = 19, OXYGEN = 20, CO2 = 21,
-		MS = 22, BALANCE = 23, DEATH_PLANT0 = 24, PLANTS = 28, CORPSES = 29, SOIL = 30;
+		MS = 22, BALANCE = 23, DEATH_PLANT0 = 24, PLANTS = 28, CORPSES = 29, SOIL = 30, POP0 = 31, POPS = 8;
+	public static void name_populations(java.util.List<Population> pops) {//подписи колонок численности популяций
+		for (int i = 0; i < POPS; i++) {
+			names[POP0 + i] = i < pops.size() ? pops.get(i).name : "pop " + (i + 1);
+		}
+	}
 	public static int death_index(int cause) {//колонка причины смерти: первые 8 — подряд с DEATH_CAUSE0, растительные — с DEATH_PLANT0
 		return cause < 8 ? DEATH_CAUSE0 + cause : DEATH_PLANT0 + cause - 8;
 	}
@@ -53,9 +59,14 @@ public class History {
 		}
 		int bots = 0, seeds = 0, queens = 0, subs = 0, plants = 0, corpses = 0;
 		double energy = 0, plant_energy = 0;
+		int[] per_pop = new int[POPS];
 		for (IBot o : w.objects) {
 			if (!o.alive()) {
 				continue;
+			}
+			Population pp = o.population();
+			if (pp != null && pp.id < POPS) {
+				per_pop[pp.id]++;
 			}
 			if (o instanceof sct.plants.Plant p) {
 				if (p.type == sct.plants.Plant.IDEAD) {
@@ -101,6 +112,9 @@ public class History {
 		data[PLANTS][i] = plants;
 		data[CORPSES][i] = corpses;
 		data[SOIL][i] = soil;
+		for (int k = 0; k < POPS; k++) {
+			data[POP0 + k][i] = per_pop[k];
+		}
 		data[BIRTHS][i] = Ledger.births;
 		data[DEATHS][i] = Ledger.deaths_total();
 		data[MUTATIONS][i] = Ledger.mutations;

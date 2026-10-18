@@ -15,4 +15,7 @@ public enum Species {
 		this.title = title;
 		this.see_code = see_code;
 	}
+	public String toString() {//в списках и таблицах; в файлах настроек — name()
+		return title;
+	}
 }

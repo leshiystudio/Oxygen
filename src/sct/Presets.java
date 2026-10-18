@@ -27,7 +27,15 @@ public class Presets {
 	public static long seed = -1;//меньше нуля — случайное
 	public static String preset = "default";
 	//
-	public static void apply_args(String[] args) {
+	public static void apply_args(String[] args) {//ошибка в аргументах — сообщение и выход
+		try {
+			apply_args_or_throw(args);
+		}catch (IllegalArgumentException e) {
+			System.err.println("Ошибка: " + e.getMessage());
+			System.exit(2);
+		}
+	}
+	private static void apply_args_or_throw(String[] args) {
 		List<String> sets = new ArrayList<String>();
 		for (int i = 0; i < args.length; i++) {
 			String a = args[i];
@@ -152,9 +160,8 @@ public class Presets {
 		}
 		return args[i];
 	}
-	private static void fail(String msg) {
-		System.err.println("Ошибка: " + msg);
-		System.exit(2);
+	private static void fail(String msg) {//в аргументах командной строки — выход (apply_args), в диалоге — сообщение
+		throw new IllegalArgumentException(msg);
 	}
 	private static void help() {
 		System.out.println("Аргументы: --preset <" + String.join("|", PRESETS.keySet()) + ">, --set имя=значение, --seed N, --w N, --h N, --bots N, --theme dark|light");

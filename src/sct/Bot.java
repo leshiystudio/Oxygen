@@ -1066,7 +1066,7 @@ public class Bot extends BotSuper {
 	//СОХРАНЕНИЕ (WorldIO)
 	//
 	int load_queen_ref = -1;//номер королевы в файле, связывается после чтения всех ботов
-	public void save(java.io.DataOutputStream out, java.util.Map<Bot, Integer> ids) throws java.io.IOException {
+	public void save(java.io.DataOutputStream out, java.util.Map<? extends IBot, Integer> ids) throws java.io.IOException {
 		out.writeInt(xpos);
 		out.writeInt(ypos);
 		out.writeInt(color.getRGB());

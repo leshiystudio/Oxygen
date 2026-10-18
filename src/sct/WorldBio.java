@@ -39,6 +39,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	public java.util.List<Population> populations = new java.util.ArrayList<Population>();//популяции текущего мира
 	public java.util.List<Population> next_populations;//популяции для следующего «New world» (диалог); null — из параметров
 	public Interaction next_interaction;//таблица взаимодействий для следующего мира (диалог); null — по умолчанию
+	public WorldSettings last_settings;//настройки, с которыми диалог «Новый мир» создал мир (null — еще не открывали)
 	int plant_count = 0;//клеток растений (с трупами)
 	double[][] mnr_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];//минералы; когда в мире растения — их почва (энергия почвы biosim)
 	int[][] height_map = new int[Constant.world_scale[0]][Constant.world_scale[1]];//карта высот
@@ -388,6 +389,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			spawn_plants();
 			Ledger.reset(this);
 			History.clear();
+			History.name_populations(populations);
 			KinClans.update(this);
 		}finally {
 			lock.unlock();
@@ -485,6 +487,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		co2_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
 		org_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
 		mnr_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
+		height_map = new int[Constant.world_scale[0]][Constant.world_scale[1]];//размер мира мог поменяться (диалог «Новый мир»)
 		//стартовые ресурсы
 		for (int x = 0; x < Constant.world_scale[0]; x++) {
 			for (int y = 0; y < Constant.world_scale[1]; y++) {

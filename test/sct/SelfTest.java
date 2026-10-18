@@ -31,6 +31,7 @@ public class SelfTest {
 		plant_child_before_parent();
 		mixed_world();
 		interactions();
+		world_settings();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -178,9 +179,15 @@ public class SelfTest {
 	private static long state_hash(WorldBio w) {
 		long h = w.steps;
 		for (IBot o : w.objects) {
-			if (o instanceof Bot b && b.killed == 0) {
-				h = h * 31 + b.xpos * 1000 + b.ypos;
-				h = h * 31 + Double.doubleToLongBits(b.energy);
+			if (o.alive()) {
+				h = h * 31 + o.cell_x() * 1000 + o.cell_y();
+				h = h * 31 + Double.doubleToLongBits(o.ledger_energy());
+				h = h * 31 + o.species().ordinal();
+			}
+		}
+		for (double[] row : w.mnr_map) {
+			for (double v : row) {
+				h = h * 31 + Double.doubleToLongBits(v);
 			}
 		}
 		for (double[] row : w.org_map) {
@@ -211,6 +218,28 @@ public class SelfTest {
 			w.step();
 		}
 		check("loaded world continues the same way", state_hash(w) == continued);
+		//смешанный мир (формат 2): боты и растения, популяции, генератор растений
+		Presets.seed = 9;
+		Constant.starting_plant_count = 200;
+		w = new WorldBio(false);
+		Constant.starting_plant_count = 0;
+		for (int i = 0; i < 50; i++) {
+			w.step();
+		}
+		f = File.createTempFile("oxygen_selftest", ".oxw");
+		f.deleteOnExit();
+		WorldIO.save(w, f);
+		saved_hash = state_hash(w);
+		for (int i = 0; i < 50; i++) {
+			w.step();
+		}
+		continued = state_hash(w);
+		WorldIO.load(w, f);
+		check("mixed world: loaded state equals saved", state_hash(w) == saved_hash);
+		for (int i = 0; i < 50; i++) {
+			w.step();
+		}
+		check("mixed world: continues the same way after load", state_hash(w) == continued);
 		Presets.seed = -1;
 	}
 	//
@@ -275,15 +304,6 @@ public class SelfTest {
 			String name = mode == sct.plants.PlantConfig.THINK_NEW ? "think_new" : "think_old";
 			check(name + ": world of plants lives (" + w.plant_count + " cells)", w.plant_count > 0);
 			check(name + ": energy balance is exact (" + Ledger.total_diff + ")", Ledger.total_diff == 0);
-			boolean refused = false;
-			try {
-				File f = File.createTempFile("oxygen_selftest", ".oxw");
-				f.deleteOnExit();
-				WorldIO.save(w, f);
-			}catch (java.io.IOException e) {
-				refused = true;
-			}
-			check(name + ": saving plants is refused until format 2", refused);
 		}
 		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
 		Constant.starting_bot_count = 300;
@@ -393,6 +413,57 @@ public class SelfTest {
 		boolean ate = sct.plants.PlantAction.EAT.run(sprout, null);
 		check("sprout ate a bot (+77)", ate && prey.killed == 1 && sprout.energy == 87);
 		Interaction.current = new Interaction(0);
+	}
+	//
+	private static void world_settings() {
+		System.out.println("new world settings:");
+		WorldSettings ws = WorldSettings.capture();
+		ws.seed = 12;
+		ws.populations.clear();
+		Population b = new Population("hunters", Species.OXYGEN_BOT, "simple", 200, Color.RED);
+		b.actions_off("seed,give");
+		Population p = new Population("forest", Species.PLANT, "think_old", 150, Color.GREEN);
+		p.plant_config = sct.plants.PlantConfig.preset("original");
+		p.plant_config.leaf_sun_base = 42;
+		ws.populations.add(b);
+		ws.populations.add(p);
+		ws.interaction = new Interaction(2);
+		ws.interaction.eat[0][1] = 0.25;
+		ws.interaction.exchange[1][0] = 1.5;
+		File f;
+		WorldSettings back;
+		try {
+			f = File.createTempFile("oxygen_selftest", ".properties");
+			f.deleteOnExit();
+			ws.save(f);
+			back = WorldSettings.load(f);
+		}catch (java.io.IOException e) {
+			check("settings save/load: " + e, false);
+			return;
+		}
+		check("populations survive save/load", back.populations.size() == 2 && back.populations.get(0).brain.equals("simple")
+			&& back.populations.get(1).brain.equals("think_old") && back.populations.get(1).count == 150);
+		check("disabled actions survive", !back.populations.get(0).on(BotAction.SEED.ordinal()) && back.populations.get(0).on(BotAction.ATTACK.ordinal()));
+		check("plant parameters survive", back.populations.get(1).plant_config.leaf_sun_base == 42 && back.populations.get(1).plant_config.max_age == 0);
+		check("interaction survives", back.interaction.eat[0][1] == 0.25 && back.interaction.exchange[1][0] == 1.5);
+		WorldBio w = new WorldBio(false);
+		back.apply(w);
+		int bots = 0, plants = 0;
+		for (IBot o : w.objects) {
+			if (o.population() == w.populations.get(0)) {
+				bots++;
+			}else if (o.population() == w.populations.get(1)) {
+				plants++;
+			}
+		}
+		check("world is created from settings (" + bots + " bots, " + plants + " plants)", bots == 200 && plants == 150);
+		check("interaction table is active", Interaction.current.eat[0][1] == 0.25);
+		for (int i = 0; i < 100; i++) {
+			w.step();
+		}
+		check("this world runs, balance holds", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Interaction.current = new Interaction(0);
+		Presets.seed = -1;
 	}
 	//
 	private static void presets_set_field() {
