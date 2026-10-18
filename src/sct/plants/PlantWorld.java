@@ -15,6 +15,7 @@ public class PlantWorld {
 	public final double[][] soil;//энергия почвы (у biosim — SOIL[:, 0]) = слой минералов мира
 	public final List<IBot> objects;//список мира — для рождения вне хода (инструменты, тесты)
 	public final PlantConfig c;
+	public sct.Population pop;//популяция этих растений (свои настройки и действия)
 	public final int W, H;
 
 	public PlantWorld(IBot[][] grid, double[][] org, double[][] soil, List<IBot> objects, PlantConfig c) {

@@ -30,6 +30,7 @@ public class SelfTest {
 		plants_world();
 		plant_child_before_parent();
 		mixed_world();
+		interactions();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -328,6 +329,70 @@ public class SelfTest {
 		Constant.mineral_influx = -1;
 		Constant.starting_plant_count = 0;
 		Presets.seed = -1;
+	}
+	//
+	private static void interactions() {
+		System.out.println("interactions:");
+		WorldBio w = empty_world();
+		Population bots = new Population("bots", Species.OXYGEN_BOT, "genome", 0, Color.BLUE);
+		Population flora = new Population("plants", Species.PLANT, "think_new", 0, Color.GREEN);
+		Population other_bots = new Population("other bots", Species.OXYGEN_BOT, "genome", 0, Color.RED);
+		bots.id = 0;
+		flora.id = 1;
+		other_bots.id = 2;
+		Interaction ia = new Interaction(3);
+		ia.eat[0][1] = 0.5;//бот ест растение с КПД 0.5
+		ia.exchange[0][2] = 2.0;//бот ест чужого бота с обменом x2
+		ia.seed_kills[0][2] = false;
+		Interaction.current = ia;
+		sct.plants.PlantWorld pw = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.objects, new sct.plants.PlantConfig());
+		pw.pop = flora;
+		//бот ест растение: половина энергии ему, остаток — в почву
+		Bot b = put(w, 20, 20, 100);
+		b.pop = bots;
+		sct.plants.Plant p = sct.plants.Plant.seedling(pw, 21, 20, sct.plants.ThinkNew.instance);//справа (направление 2)
+		p.energy = 300;
+		w.objects.add(p);
+		w.Map[21][20] = p;
+		double soil_before = w.mnr_map[21][20];
+		Ledger.begin_step();
+		b.attack(2);
+		check("bot ate plant with efficiency 0.5 (+150)", b.energy == 250 && p.killed == 1);
+		check("rest of plant energy went to soil (+150)", w.mnr_map[21][20] - soil_before == 150);
+		//обмен x2 — разница в журнале
+		Bot alien = put(w, 21, 20, 100);
+		alien.pop = other_bots;
+		double before = b.energy;
+		b.attack(2);
+		check("exchange x2 doubles the gain (+200)", b.energy - before == 200);
+		check("exchange difference is a ledger item (+100)", Ledger.in_exchange == 100);
+		//передача энергии между популяциями закрыта по умолчанию
+		Bot neighbour = put(w, 21, 20, 100);
+		neighbour.pop = other_bots;
+		before = neighbour.energy;
+		b.give(2);
+		check("no energy sharing between populations by default", neighbour.energy == before);
+		//семечко, которому запрещено убивать, гибнет одно
+		Bot seed = put(w, 30, 30, 100);
+		seed.pop = bots;
+		seed.state = 1;
+		seed.rotate = 2;
+		seed.seed_time = 5;
+		Bot target = put(w, 31, 30, 100);
+		target.pop = other_bots;
+		seed.Update(null);
+		check("seed without seed_kills dies alone", seed.killed == 1 && target.killed == 0);
+		//росток ест бота: КПД по таблице (1.0), энергия растения целая
+		Interaction.current.eat[1][0] = 1.0;
+		Bot prey = put(w, 41, 40, 77);
+		prey.pop = bots;
+		sct.plants.Plant sprout = sct.plants.Plant.seedling(pw, 40, 40, sct.plants.ThinkNew.instance);
+		sprout.energy = 10;
+		w.objects.add(sprout);
+		w.Map[40][40] = sprout;
+		boolean ate = sct.plants.PlantAction.EAT.run(sprout, null);
+		check("sprout ate a bot (+77)", ate && prey.killed == 1 && sprout.energy == 87);
+		Interaction.current = new Interaction(0);
 	}
 	//
 	private static void presets_set_field() {

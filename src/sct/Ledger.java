@@ -45,6 +45,7 @@ public class Ledger {
 	public static double out_plant_birth;//цена рождения
 	public static double out_soil_decay;//вымывание энергии почвы
 	public static double in_mineral_influx;//случайный приток минералов, если включен при растениях (mineral_influx)
+	public static double in_exchange;//еда между популяциями: exchange != 1 и округление до целой энергии растений
 	public static int births;
 	public static int mutations;
 	public static int[] deaths = new int[die_names.length];
@@ -70,13 +71,14 @@ public class Ledger {
 		out_plant_birth = 0;
 		out_soil_decay = 0;
 		in_mineral_influx = 0;
+		in_exchange = 0;
 		births = 0;
 		mutations = 0;
 		java.util.Arrays.fill(deaths, 0);
 	}
 	//
 	public static double in_step() {
-		return in_sun + in_negative + in_plant_sun + in_plant_health + in_mineral_influx;
+		return in_sun + in_negative + in_plant_sun + in_plant_health + in_mineral_influx + in_exchange;
 	}
 	public static double out_step() {
 		return out_life + out_move + out_cap + out_birth_fail + out_org_clamp + out_org_other

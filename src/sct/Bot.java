@@ -205,7 +205,9 @@ public class Bot extends BotSuper {
 						IBot hit = occupant(pos);
 						if (hit != null) {
 							die_with_organics(Ledger.DIE_COLLISION);//убить семечко
-							hit.die(Ledger.DIE_COLLISION);//убить того, в кого попало
+							if (seed_kills(hit)) {//другая популяция — по таблице взаимодействий
+								hit.die(Ledger.DIE_COLLISION);//убить того, в кого попало
+							}
 							return(0);
 						}
 					}
@@ -603,8 +605,8 @@ public class Bot extends BotSuper {
 	//
 	//ДЕЙСТВИЯ ТЕЛА (BotAction). Код перенесен из update_commands без изменений.
 	//
-	public boolean on(BotAction a) {//включено ли действие (галочка); выключенное — команда без эффекта
-		return a.enabled();
+	public boolean on(BotAction a) {//включено ли действие (галочка популяции); выключенное — команда без эффекта
+		return pop != null ? pop.on(a.ordinal()) : a.enabled();
 	}
 	public double oxygen() {//среда в клетке бота — для датчиков и своих алгоритмов
 		return oxygen_map[xpos][ypos];
@@ -682,7 +684,7 @@ public class Bot extends BotSuper {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 			Bot n = bot_at(pos);
-			if (n != null && n.state == 0) {
+			if (n != null && n.state == 0 && can_chain(n)) {
 				chain[rot] = true;
 				n.chain[(rot + 4) % 8] = true;
 			}
@@ -711,9 +713,12 @@ public class Bot extends BotSuper {
 	public void attack(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (occupant(pos) != null) {
-				Bot victim = bot_at(pos);//другие виды — этап 4 (таблица взаимодействий)
-				if (victim != null) {
+			IBot target = occupant(pos);
+			if (target != null) {
+				Bot victim = bot_at(pos);
+				if (victim == null || !same_population(victim)) {//другая популяция — по таблице взаимодействий
+					eat_other(target);
+				}else if (victim != null) {
 					energy += victim.energy;
 					victim.energy = 0;//энергию забрал хищник: в органику уходит только тело
 					victim.die_with_organics(Ledger.DIE_EATEN);
@@ -847,7 +852,7 @@ public class Bot extends BotSuper {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 			Bot relative = bot_at(pos);
-			if (relative != null && relative.state == 0) {
+			if (relative != null && relative.state == 0 && can_share(relative)) {
 				if (relative.killed == 0) {
 					relative.energy += energy / 4;
 					energy -= energy / 4;
@@ -860,7 +865,7 @@ public class Bot extends BotSuper {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 			Bot relative = bot_at(pos);
-			if (relative != null && relative.state == 0) {
+			if (relative != null && relative.state == 0 && can_share(relative)) {
 				if (relative.killed == 0) {
 					double enr = relative.energy + energy;
 					relative.energy = enr / 2;
@@ -984,6 +989,7 @@ public class Bot extends BotSuper {
 					new_bot.genom_array = new_brain;
 					new_bot.set_current_genom(genom_current_idx);//потомок продолжает с того же генома, что и родитель
 					new_bot.brain = brain == null ? null : brain.child(this);
+					new_bot.pop = pop;
 					//цвет клана наследуется и чуть сдвигается при каждой мутации — видны родственные группы
 					new_bot.clan_color = mutated ? drift_color(clan_color, 10) : clan_color;
 					//
@@ -1016,6 +1022,17 @@ public class Bot extends BotSuper {
 	public Species species() {
 		return Species.OXYGEN_BOT;
 	}
+	private void eat_other(IBot target) {//съесть существо другой популяции: КПД и обмен из таблицы
+		double eff = eat_efficiency(target);
+		if (eff <= 0) {
+			return;
+		}
+		double given = target.eaten_by(this, eff);
+		double got = given * exchange(target);
+		Ledger.in_exchange += got - given;
+		energy += got;
+		go_red();
+	}
 	public boolean crowds() {//семечко соседом не считается — как было в bot_count
 		return state == 0;
 	}
@@ -1025,15 +1042,17 @@ public class Bot extends BotSuper {
 	public double energy_value() {
 		return energy;
 	}
-	public void eaten_by(IBot eater, double efficiency) {//энергию забирает съевший, в органику уходит тело
-		energy = 0;
+	public double eaten_by(IBot eater, double efficiency) {//съевшему — доля энергии, остаток и тело — в органику
+		double given = energy * efficiency;
+		energy -= given;
 		die_with_organics(Ledger.DIE_EATEN);
+		return given;
 	}
 	public void die(int cause) {
 		die_with_organics(cause);
 	}
 	public boolean same_kin(IBot other) {
-		return other instanceof Bot && other.species() == species()
+		return other instanceof Bot && other.species() == species() && same_population(other)
 			&& count_different_genom(genom_array, ((Bot) other).genom_array) <= Constant.max_different_genom;
 	}
 	public int color(int draw_type) {
@@ -1302,6 +1321,8 @@ public class Bot extends BotSuper {
 				}else {
 					c = new Color(255, 0, 255);
 				}
+			}else if(draw_type == 9) {// популяции
+				c = pop != null ? pop.color : Color.GRAY;
 			}else if(draw_type == 8) {// кланы по геному
 				c = new Color(kin_color);
 			}else if(draw_type == 7) {// королевы

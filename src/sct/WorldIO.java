@@ -98,9 +98,17 @@ public class WorldIO {
 			ArrayList<IBot> objects = new ArrayList<IBot>();
 			int n = in.readInt();
 			int[] queen_refs = new int[n];
+			Population bots_pop = null;//формат версии 1 — один вид: боты попадают в первую популяцию ботов мира
+			for (Population p : w.populations) {
+				if (p.species == Species.OXYGEN_BOT) {
+					bots_pop = p;
+					break;
+				}
+			}
 			for (int i = 0; i < n; i++) {
 				Bot b = Bot.load(in, ox, co2, org, map, objects);
-				b.brain = Brains.bot_brain(Constant.bot_brain);//мозг в файле версии 1 не хранится
+				b.pop = bots_pop;
+				b.brain = bots_pop != null ? bots_pop.bot_brain : Brains.bot_brain(Constant.bot_brain);//мозг в файле версии 1 не хранится
 				queen_refs[i] = b.load_queen_ref;
 				objects.add(b);
 				map[b.xpos][b.ypos] = b;

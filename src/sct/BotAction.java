@@ -99,7 +99,7 @@ public enum BotAction implements Action<Bot> {
 		return on[ordinal()];
 	}
 	public boolean run(Bot body, ListIterator<IBot> iterator, int... args) {
-		if (!on[ordinal()] || body.killed != 0) {
+		if (!body.on(this) || body.killed != 0) {
 			return false;
 		}
 		act(body, iterator, args);

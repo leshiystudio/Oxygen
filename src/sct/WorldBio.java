@@ -35,7 +35,10 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	double[][] oxygen_map;//кислород
 	double[][] co2_map;//углекислота
 	public double[][] org_map;//органика (общая: боты Oxygen и растения)
-	public sct.plants.PlantWorld plants;//растения: общие данные мира для них (иначе null)
+	public sct.plants.PlantWorld plants;//растения: общие данные мира для них (первая популяция растений; иначе null)
+	public java.util.List<Population> populations = new java.util.ArrayList<Population>();//популяции текущего мира
+	public java.util.List<Population> next_populations;//популяции для следующего «New world» (диалог); null — из параметров
+	public Interaction next_interaction;//таблица взаимодействий для следующего мира (диалог); null — по умолчанию
 	int plant_count = 0;//клеток растений (с трупами)
 	double[][] mnr_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];//минералы; когда в мире растения — их почва (энергия почвы biosim)
 	int[][] height_map = new int[Constant.world_scale[0]][Constant.world_scale[1]];//карта высот
@@ -371,11 +374,31 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	public void newPopulation() {//создать случайную популяцию
 		lock.lock();
 		try {
-			BotAction.configure(Constant.bot_actions_off);//галочки действий (этап 4 — у каждой популяции свои)
-			sct.plants.PlantAction.configure(Constant.plant_actions_off);
-			Brain<Bot> brain = Brains.bot_brain(Constant.bot_brain);
+			populations = next_populations != null ? next_populations : Population.defaults();
+			for (int i = 0; i < populations.size(); i++) {
+				populations.get(i).id = i;
+			}
+			Interaction.current = next_interaction != null ? next_interaction : new Interaction(populations.size());
 			kill_all();
-			for (int i = 0; i < Constant.starting_bot_count; i++) {
+			for (Population p : populations) {
+				if (p.species == Species.OXYGEN_BOT) {
+					spawn_bots(p);
+				}
+			}
+			spawn_plants();
+			Ledger.reset(this);
+			History.clear();
+			KinClans.update(this);
+		}finally {
+			lock.unlock();
+		}
+		repaint();
+	}
+	private void spawn_bots(Population p) {//боты популяции p — как раньше newPopulation
+		Brain<Bot> brain = Brains.bot_brain(p.brain);
+		p.bot_brain = brain;
+		{
+			for (int i = 0; i < p.count; i++) {
 				while(true){
 					int x = rand.nextInt(Constant.world_scale[0]);
 					int y = rand.nextInt(Constant.world_scale[1]);
@@ -393,51 +416,61 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 							objects
 						);
 						new_bot.brain = brain;
+						new_bot.pop = p;
 						objects.add(new_bot);
 						Map[x][y] = new_bot;
 						break;
 					}
 				}
 			}
-			spawn_plants();
-			Ledger.reset(this);
-			History.clear();
-			KinClans.update(this);
-		}finally {
-			lock.unlock();
 		}
-		repaint();
 	}
-	private void spawn_plants() {//ростки растений — как init_world в biosim
+	private void spawn_plants() {//популяции растений — как init_world в biosim
 		plants = null;
-		if (Constant.starting_plant_count <= 0) {
-			return;
-		}
-		sct.plants.PlantConfig c = sct.plants.PlantConfig.current;
-		for (int x = 0; x < Constant.world_scale[0]; x++) {//минералы — почва растений: органика минерализуется в них, корни их забирают
-			for (int y = 0; y < Constant.world_scale[1]; y++) {
-				mnr_map[x][y] = c.energy_around_start_value;
-				if (Constant.starting_bot_count <= 0) {//мир только из растений — стартовая органика biosim
-					org_map[x][y] = c.organic_around_start_value;
-				}
+		boolean any_bots = false;
+		for (Population p : populations) {
+			if (p.species == Species.OXYGEN_BOT && p.count > 0) {
+				any_bots = true;
 			}
 		}
-		plants = new sct.plants.PlantWorld(Map, org_map, mnr_map, objects, c);
-		Brain<sct.plants.Plant> brain = c.think_mode == sct.plants.PlantConfig.THINK_OLD ? sct.plants.ThinkOld.instance : sct.plants.ThinkNew.instance;
-		int created = 0;
-		int tries = 0;
-		java.util.Random r = sct.plants.PlantWorld.rand;
-		while (created < Constant.starting_plant_count && tries < 1000000) {
-			tries++;
-			int x = r.nextInt(Constant.world_scale[0]);
-			int y = r.nextInt(Constant.world_scale[1]);
-			if (Map[x][y] != null) {
+		for (Population p : populations) {
+			if (p.species != Species.PLANT || p.count <= 0) {
 				continue;
 			}
-			sct.plants.Plant p = sct.plants.Plant.seedling(plants, x, y, brain);
-			objects.add(p);
-			Map[x][y] = p;
-			created++;
+			sct.plants.PlantConfig c = p.plant_config;
+			if (plants == null) {//первая популяция растений задает почву мира и минерализацию
+				for (int x = 0; x < Constant.world_scale[0]; x++) {//минералы — почва растений: органика минерализуется в них, корни их забирают
+					for (int y = 0; y < Constant.world_scale[1]; y++) {
+						mnr_map[x][y] = c.energy_around_start_value;
+						if (!any_bots) {//мир без ботов Oxygen — стартовая органика biosim
+							org_map[x][y] = c.organic_around_start_value;
+						}
+					}
+				}
+			}
+			sct.plants.PlantWorld pw = new sct.plants.PlantWorld(Map, org_map, mnr_map, objects, c);
+			pw.pop = p;
+			p.plant_world = pw;
+			if (plants == null) {
+				plants = pw;
+			}
+			Brain<sct.plants.Plant> brain = p.brain.equals("think_old") ? sct.plants.ThinkOld.instance : sct.plants.ThinkNew.instance;
+			p.plant_brain = brain;
+			int created = 0;
+			int tries = 0;
+			java.util.Random r = sct.plants.PlantWorld.rand;
+			while (created < p.count && tries < 1000000) {
+				tries++;
+				int x = r.nextInt(Constant.world_scale[0]);
+				int y = r.nextInt(Constant.world_scale[1]);
+				if (Map[x][y] != null) {
+					continue;
+				}
+				sct.plants.Plant plant = sct.plants.Plant.seedling(pw, x, y, brain);
+				objects.add(plant);
+				Map[x][y] = plant;
+				created++;
+			}
 		}
 	}
 	public void kill_all() {//очистить мир

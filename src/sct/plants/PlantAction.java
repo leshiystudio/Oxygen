@@ -73,7 +73,8 @@ public enum PlantAction implements Action<Plant> {
 		return on[ordinal()];
 	}
 	public boolean run(Plant body, ListIterator<IBot> iterator, int... args) {
-		if (!on[ordinal()] || body.killed != 0) {
+		boolean enabled = body.w.pop != null ? body.w.pop.on(ordinal()) : on[ordinal()];
+		if (!enabled || body.killed != 0) {
 			return false;
 		}
 		return act(body, iterator, args);

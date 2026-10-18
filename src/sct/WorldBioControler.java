@@ -122,7 +122,7 @@ public class WorldBioControler extends JPanel{
         place_pair(draw_type_button("Clans", 3), draw_type_button("Kin", 8));
         place_pair(draw_type_button("Age", 4), draw_type_button("Color", 1));
         place_pair(draw_type_button("Type", 5), draw_type_button("Chain", 6));
-        place_pair(draw_type_button("Queen", 7), new JLabel());
+        place_pair(draw_type_button("Queen", 7), draw_type_button("Population", 9));
 
         //
         //смена режимов отрисовки фона

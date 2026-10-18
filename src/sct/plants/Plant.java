@@ -47,6 +47,7 @@ public class Plant extends BotSuper {
 		this.xpos = x;
 		this.ypos = y;
 		this.brain = brain;
+		this.pop = w.pop;
 		this.genome = new byte[w.c.genome_size()];
 	}
 	public static Plant seedling(PlantWorld w, int x, int y, Brain<Plant> brain) {//росток при создании мира (init_world)
@@ -92,8 +93,8 @@ public class Plant extends BotSuper {
 	//
 	//РОДСТВО
 	//
-	public boolean is_enemy(IBot o) {//is_enemy_s: другой вид — всегда чужой
-		if (!(o instanceof Plant)) {
+	public boolean is_enemy(IBot o) {//is_enemy_s: другой вид и другая популяция — всегда чужие
+		if (!(o instanceof Plant) || !same_population(o)) {
 			return true;
 		}
 		Plant p = (Plant) o;
@@ -378,8 +379,23 @@ public class Plant extends BotSuper {
 	}
 	boolean eat_dir(int d) {
 		IBot o = at(d);
-		if (!(o instanceof Plant)) {//другие виды — этап 4 (таблица взаимодействий)
+		if (o == null) {
 			return false;
+		}
+		if (!(o instanceof Plant)) {//другой вид: ест только росток, КПД и обмен — из таблицы взаимодействий
+			if (type != ILIVE) {
+				return false;
+			}
+			double eff = eat_efficiency(o);
+			if (eff <= 0) {
+				return false;
+			}
+			double given = o.eaten_by(this, eff);
+			long got = (long)(given * exchange(o));//энергия растений целая: дробь и обмен — статья журнала
+			Ledger.in_exchange += got - given;
+			add_energy(got);
+			add_health(w.c.eat_health_gain);
+			return true;
 		}
 		Plant j = (Plant) o;
 		int tj = j.type;
@@ -392,8 +408,18 @@ public class Plant extends BotSuper {
 			return false;
 		}
 		long gain = (long) j.energy + j.ina + j.inb;
-		long to_eater = (long)(gain * w.c.eat_efficiency);
+		boolean same = same_population(j);
+		double eff = same ? w.c.eat_efficiency : eat_efficiency(j);//другая популяция — по таблице
+		if (eff <= 0) {
+			return false;
+		}
+		long to_eater = (long)(gain * eff);
 		w.soil[j.xpos][j.ypos] += gain - to_eater;
+		if (!same) {
+			long got = (long)(to_eater * exchange(j));
+			Ledger.in_exchange += got - to_eater;
+			to_eater = got;
+		}
 		add_energy(to_eater);
 		add_health(w.c.eat_health_gain);
 		if (tj != IDEAD) {
@@ -732,7 +758,7 @@ public class Plant extends BotSuper {
 	public double energy_value() {
 		return (double) energy + ina + inb;
 	}
-	public void eaten_by(IBot eater, double efficiency) {//как eat_dir: остаток от КПД — в почву
+	public double eaten_by(IBot eater, double efficiency) {//как eat_dir: остаток от КПД — в почву
 		long gain = (long) energy + ina + inb;
 		long to_eater = (long)(gain * efficiency);
 		w.soil[xpos][ypos] += gain - to_eater;
@@ -740,6 +766,7 @@ public class Plant extends BotSuper {
 			Ledger.die(Ledger.DIE_EATEN);
 		}
 		remove();
+		return to_eater;
 	}
 	public void die(int cause) {
 		kill(cause);
@@ -754,6 +781,9 @@ public class Plant extends BotSuper {
 		if (draw_type == 2) {//энергия
 			int v = (int) Math.min(255, (long) energy * 255 / Math.max(1, w.c.max_energy));
 			return (v << 16) | (v << 8) | v;
+		}
+		if (draw_type == 9) {//популяции
+			return w.pop != null ? w.pop.color.getRGB() & 0xFFFFFF : 0x808080;
 		}
 		if (draw_type == 3 || draw_type == 8) {//кланы
 			return type == IDEAD ? palette[IDEAD] : color;
