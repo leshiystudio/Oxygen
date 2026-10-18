@@ -15,11 +15,29 @@ public class History {
 		"ms/step", "balance diff",
 		"d: health", "d: branch lost", "d: toxic soil", "d: soil exhausted",
 		"plants", "plant corpses", "minerals (soil)",
-		"pop 1", "pop 2", "pop 3", "pop 4", "pop 5", "pop 6", "pop 7", "pop 8"//подписи — имена популяций мира (name_populations)
+		"pop 1", "pop 2", "pop 3", "pop 4", "pop 5", "pop 6", "pop 7", "pop 8",//подписи — имена популяций мира (name_populations)
+		"no role (gray)", "photosynth (green)", "predators (red)", "recyclers (yellow)", "mixed",
+		"sprouts", "leaves", "roots", "trunks (trans)"
 	};
+	//цвета линий, совпадающие с цветами на карте (null — цвет из палитры графика)
+	public static final java.awt.Color[] colors = new java.awt.Color[names.length];
 	public static final int BOTS = 0, SEEDS = 1, QUEENS = 2, SUBS = 3, ENERGY_CELLS = 4, ORGANICS = 5, ENERGY_TOTAL = 6,
 		BIRTHS = 7, DEATHS = 8, MUTATIONS = 9, DEATH_CAUSE0 = 10, UNIQUE = 18, CLANS = 19, OXYGEN = 20, CO2 = 21,
-		MS = 22, BALANCE = 23, DEATH_PLANT0 = 24, PLANTS = 28, CORPSES = 29, SOIL = 30, POP0 = 31, POPS = 8;
+		MS = 22, BALANCE = 23, DEATH_PLANT0 = 24, PLANTS = 28, CORPSES = 29, SOIL = 30, POP0 = 31, POPS = 8,
+		ROLE0 = 39, SPROUTS = 44, LEAVES = 45, ROOTS = 46, TRUNKS = 47;
+	static {
+		colors[SEEDS] = new java.awt.Color(150, 90, 30);
+		colors[ROLE0 + Bot.ROLE_NONE] = new java.awt.Color(150, 150, 150);
+		colors[ROLE0 + Bot.ROLE_PHOTO] = new java.awt.Color(60, 220, 60);
+		colors[ROLE0 + Bot.ROLE_PREDATOR] = new java.awt.Color(240, 60, 60);
+		colors[ROLE0 + Bot.ROLE_RECYCLER] = new java.awt.Color(240, 220, 40);
+		colors[ROLE0 + Bot.ROLE_MIXED] = new java.awt.Color(200, 120, 220);
+		colors[SPROUTS] = new java.awt.Color(0xDCE6E6);//палитра biosim
+		colors[LEAVES] = new java.awt.Color(0x0AB01A);
+		colors[ROOTS] = new java.awt.Color(0xE6830A);
+		colors[TRUNKS] = new java.awt.Color(0x6E3BFF);
+		colors[CORPSES] = new java.awt.Color(0xBE320A);
+	}
 	public static void name_populations(java.util.List<Population> pops) {//подписи колонок численности популяций
 		for (int i = 0; i < POPS; i++) {
 			names[POP0 + i] = i < pops.size() ? pops.get(i).name : "pop " + (i + 1);
@@ -60,6 +78,8 @@ public class History {
 		int bots = 0, seeds = 0, queens = 0, subs = 0, plants = 0, corpses = 0;
 		double energy = 0, plant_energy = 0;
 		int[] per_pop = new int[POPS];
+		int[] roles = new int[5];
+		int[] plant_types = new int[7];
 		for (IBot o : w.objects) {
 			if (!o.alive()) {
 				continue;
@@ -69,6 +89,7 @@ public class History {
 				per_pop[pp.id]++;
 			}
 			if (o instanceof sct.plants.Plant p) {
+				plant_types[p.type]++;
 				if (p.type == sct.plants.Plant.IDEAD) {
 					corpses++;
 				}else {
@@ -82,6 +103,7 @@ public class History {
 			}
 			if (b.state == 0) {
 				bots++;
+				roles[b.role()]++;
 			}else {
 				seeds++;
 			}
@@ -112,6 +134,13 @@ public class History {
 		data[PLANTS][i] = plants;
 		data[CORPSES][i] = corpses;
 		data[SOIL][i] = soil;
+		for (int r = 0; r < roles.length; r++) {
+			data[ROLE0 + r][i] = roles[r];
+		}
+		data[SPROUTS][i] = plant_types[sct.plants.Plant.ILIVE];
+		data[LEAVES][i] = plant_types[sct.plants.Plant.LEAF];
+		data[ROOTS][i] = plant_types[sct.plants.Plant.ROOT];
+		data[TRUNKS][i] = plant_types[sct.plants.Plant.TRANS];
 		for (int k = 0; k < POPS; k++) {
 			data[POP0 + k][i] = per_pop[k];
 		}

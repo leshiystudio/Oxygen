@@ -1446,6 +1446,24 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
+	//роль бота по цвету режима Predators: каждое действие сдвигает цвет к своему
+	//(фотосинтез — к зеленому, атака — к красному, переработка органики — к желтому)
+	public static final int ROLE_NONE = 0, ROLE_PHOTO = 1, ROLE_PREDATOR = 2, ROLE_RECYCLER = 3, ROLE_MIXED = 4;
+	public int role() {
+		if (c_red < 0) {
+			return ROLE_NONE;//еще ничего не делал
+		}
+		if (c_red >= 160 && c_green >= 160) {
+			return ROLE_RECYCLER;//желтый
+		}
+		if (c_red - c_green >= 64) {
+			return ROLE_PREDATOR;
+		}
+		if (c_green - c_red >= 64) {
+			return ROLE_PHOTO;
+		}
+		return ROLE_MIXED;
+	}
 	public boolean has_chain(int rot) {//для отрисовки
 		return chain[rot];
 	}

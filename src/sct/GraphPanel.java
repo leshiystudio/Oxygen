@@ -21,7 +21,9 @@ public class GraphPanel extends JPanel {
 	//
 	private static final String[] group_names = {"cells", "energy", "events/step", "deaths/step", "genomes", "gases", "ms/step", "queens", "plants", "populations"};
 	private static final int[][] group_series = {
-		{History.BOTS, History.SEEDS},
+		{History.ROLE0 + Bot.ROLE_PHOTO, History.ROLE0 + Bot.ROLE_PREDATOR, History.ROLE0 + Bot.ROLE_RECYCLER,
+			History.ROLE0 + Bot.ROLE_MIXED, History.ROLE0 + Bot.ROLE_NONE, History.SEEDS,
+			History.SPROUTS, History.LEAVES, History.ROOTS, History.TRUNKS, History.CORPSES},
 		{History.ENERGY_CELLS, History.ORGANICS, History.ENERGY_TOTAL},
 		{History.BIRTHS, History.DEATHS, History.MUTATIONS},
 		{History.death_index(1), History.death_index(2), History.death_index(3), History.death_index(4),
@@ -149,9 +151,25 @@ public class GraphPanel extends JPanel {
 			}finally {
 				world.lock.unlock();
 			}
+			//линии, нулевые во всем окне (вида или роли в мире нет), не рисуются
+			int kept = 0;
+			for (int s = 0; s < series.length; s++) {
+				boolean any = false;
+				for (double d : values[s]) {
+					if (d != 0) {
+						any = true;
+						break;
+					}
+				}
+				if (any || series.length == 1) {
+					series[kept] = series[s];
+					values[kept] = values[s];
+					kept++;
+				}
+			}
 			double max = 0;
-			for (double[] v : values) {
-				for (double d : v) {
+			for (int s = 0; s < kept; s++) {
+				for (double d : values[s]) {
 					max = Math.max(max, d);
 				}
 			}
@@ -163,10 +181,29 @@ public class GraphPanel extends JPanel {
 			for (int k = 1; k < 4; k++) {
 				g.drawLine(x0, y0 + h * k / 4, x0 + w, y0 + h * k / 4);
 			}
-			int top = y0 + 30;
-			int ph = h - 34;
-			for (int s = 0; s < series.length; s++) {
-				g.setColor(palette[s % palette.length]);
+			//легенда с переносом строк: текущее значение каждой линии
+			g.setFont(g.getFont().deriveFont(Font.PLAIN, 11f));
+			java.awt.FontMetrics fm = g.getFontMetrics();
+			int lx = x0 + 4;
+			int ly = y0 + 26;
+			int[] label_x = new int[kept];
+			int[] label_y = new int[kept];
+			String[] labels = new String[kept];
+			for (int s = 0; s < kept; s++) {
+				labels[s] = History.names[series[s]] + " " + format(values[s][values[s].length - 1]);
+				int lw = fm.stringWidth(labels[s]);
+				if (lx > x0 + 4 && lx + lw > x0 + w - 4) {
+					lx = x0 + 4;
+					ly += 12;
+				}
+				label_x[s] = lx;
+				label_y[s] = ly;
+				lx += lw + 10;
+			}
+			int top = ly + 4;
+			int ph = y0 + h - 4 - top;
+			for (int s = 0; s < kept; s++) {
+				g.setColor(color_of(series[s], s));
 				double[] v = values[s];
 				int px = -1, py = -1;
 				for (int p = 0; p < v.length; p++) {
@@ -179,16 +216,15 @@ public class GraphPanel extends JPanel {
 					py = yy;
 				}
 			}
-			g.setFont(g.getFont().deriveFont(Font.PLAIN, 11f));
 			g.setColor(Theme.panel_fg);
 			g.drawString(group_names[gi] + "  max " + format(max) + "  steps " + first_step + ".." + last_step, x0 + 4, y0 + 13);
-			int lx = x0 + 4;
-			for (int s = 0; s < series.length; s++) {
-				String label = History.names[series[s]] + " " + format(values[s][values[s].length - 1]);
-				g.setColor(palette[s % palette.length]);
-				g.drawString(label, lx, y0 + 26);
-				lx += g.getFontMetrics().stringWidth(label) + 10;
+			for (int s = 0; s < kept; s++) {
+				g.setColor(color_of(series[s], s));
+				g.drawString(labels[s], label_x[s], label_y[s]);
 			}
+		}
+		private Color color_of(int column, int s) {
+			return History.colors[column] != null ? History.colors[column] : palette[s % palette.length];
 		}
 		private String format(double v) {
 			if (Math.abs(v) >= 1e6) {

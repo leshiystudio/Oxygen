@@ -76,7 +76,9 @@ public class WorldBioControler extends JPanel{
 
         JButton new_world_button = new JButton("New world...");
         new_world_button.addActionListener(e -> NewWorldDialog.open(SwingUtilities.getWindowAncestor(this), world));
-        place(new_world_button, button_h);
+        JButton help_button = new JButton("Help (H)");
+        help_button.addActionListener(e -> HelpDialog.toggle(SwingUtilities.getWindowAncestor(this)));
+        place_pair(new_world_button, help_button);
 
         JButton step_button = new JButton("Step (N)");
         step_button.addActionListener(e -> world.request_step());
@@ -190,6 +192,7 @@ public class WorldBioControler extends JPanel{
         bind_key("OPEN_BRACKET", () -> world.next_tool(-1));
         bind_key("CLOSE_BRACKET", () -> world.next_tool(1));
         bind_key("ESCAPE", world::reset_tool);
+        bind_key("H", () -> HelpDialog.toggle(SwingUtilities.getWindowAncestor(this)));
         for (int i = 1; i <= 9; i++) {//10-я группа (популяции) — галочкой
         	int group = i - 1;
         	bind_key(String.valueOf(i), () -> graphs.toggle_group(group));
