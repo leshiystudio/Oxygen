@@ -143,18 +143,21 @@ public class Bot extends BotSuper {
 				if(queen == 0) {
 					age -= (int)(oxygen_map[xpos][ypos] * Constant.age_minus_coeff) + 1;
 					energy -= Constant.energy_for_life;
+					Ledger.out_life += Constant.energy_for_life;
 				}else if (queen == 2){
 					if(queen_bot == null || queen_bot.killed > 0) {
-						die_with_organics();
+						die_with_organics(Ledger.DIE_QUEEN_LOST);
 						return(0);
 					}
 					age -= (int)((oxygen_map[xpos][ypos] * Constant.age_minus_coeff) + 1) * 0.9;
 					energy -= Constant.energy_for_life * 0.9;
+					Ledger.out_life += Constant.energy_for_life * 0.9;
 					
 				}else {
 					age -= (int)((oxygen_map[xpos][ypos] * Constant.age_minus_coeff) + 1) * 0.9;
 					//age -= 1;
 					energy -= Constant.energy_for_life * 2; // * 0.8;
+					Ledger.out_life += Constant.energy_for_life * 2;
 				}
 				//
 				int count = bot_count() + 1;//автоматическое деление и мозг
@@ -175,19 +178,23 @@ public class Bot extends BotSuper {
 				update_chain();//обновление цепочек
 				//
 				if (energy > 1000 && queen < 1) {//ограничитель количества энергии
+					Ledger.out_cap += energy - 1000;
 					energy = 1000;
 				}else if(energy > 2000) {
+					Ledger.out_cap += energy - 2000;
 					energy = 2000;
 				}
 				//
 				if (age <= 0 || org_map[xpos][ypos] >= Constant.org_die_level || energy <= 0) {//смерть от старости или от органики
-					die_with_organics();
+					die_with_organics(age <= 0 ? Ledger.DIE_AGE : (energy <= 0 ? Ledger.DIE_HUNGER : Ledger.DIE_ORGANICS));
 					return(0);
 				}
 			}else if (state == 1){//если семечко
 				if (org_map[xpos][ypos] >= Constant.org_die_level) {//умираем от переизбытка органики
-					die_with_organics();
-					org_map[xpos][ypos] = Math.max(0, org_map[xpos][ypos] - 0.1);
+					die_with_organics(Ledger.DIE_ORGANICS);
+					double org_before = org_map[xpos][ypos];
+					org_map[xpos][ypos] = Math.max(0, org_before - 0.1);
+					Ledger.out_org_other += org_before - org_map[xpos][ypos];
 					return(0);
 				}
 				//
@@ -196,8 +203,8 @@ public class Bot extends BotSuper {
 					int[] pos = get_rotate_position(rotate);
 					if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 						if (map[pos[0]][pos[1]] != null) {
-							die_with_organics();//убить семечко
-							map[pos[0]][pos[1]].die_with_organics();//убить бота
+							die_with_organics(Ledger.DIE_COLLISION);//убить семечко
+							map[pos[0]][pos[1]].die_with_organics(Ledger.DIE_COLLISION);//убить бота
 							return(0);
 						}
 					}
@@ -240,6 +247,7 @@ public class Bot extends BotSuper {
 					pht_org_block = 1;
 					double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
 					energy += pe;
+					Ledger.in_sun += pe;
 					go_green();
 					oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
 //					if (oxygen_map[xpos][ypos] > 1) {
@@ -260,6 +268,7 @@ public class Bot extends BotSuper {
 					int sens = move(commands[(index + 1) % max_mind] % 8);
 					if (sens == 1) {
 						energy -= Constant.energy_for_move;
+						Ledger.out_move += Constant.energy_for_move;
 					}
 				}
 				index += 2;
@@ -271,6 +280,7 @@ public class Bot extends BotSuper {
 					oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
 					if(move(rotate) > 0) {
 						energy -= Constant.energy_for_move;
+						Ledger.out_move += Constant.energy_for_move;
 					}
 				}
 				index += 1;
@@ -618,7 +628,7 @@ public class Bot extends BotSuper {
 				if (victim != null) {
 					energy += victim.energy;
 					victim.energy = 0;//энергию забрал хищник: в органику уходит только тело
-					victim.die_with_organics();
+					victim.die_with_organics(Ledger.DIE_EATEN);
 					go_red();
 				}
 			}
@@ -837,7 +847,8 @@ public class Bot extends BotSuper {
 			if (map[pos[0]][pos[1]] == null) {
 				energy -= Constant.energy_for_multiply;
 				if (energy <= 0) {
-					die_with_organics();
+					Ledger.out_birth_fail += Constant.energy_for_multiply;//потомок не родился, цена деления потеряна
+					die_with_organics(Ledger.DIE_HUNGER);
 				}else {
 					Color new_color;
 					if (rand.nextInt(800) == 0) {//немного меняем(с шансом 1/800 - полностью)
@@ -858,8 +869,11 @@ public class Bot extends BotSuper {
 //					if (rand.nextInt(4) == 0) {//мутация
 //						new_brain[rand.nextInt(64)] = rand.nextInt(64);
 //					}
+					boolean mutated = false;
 					if (rand.nextInt(100) < Constant.mutate_chance_percent) {//мутация
 						new_brain[rand.nextInt(Constant.mind_count)][rand.nextInt(max_mind)] = rand.nextInt(Constant.mind_max_value_command);
+						mutated = true;
+						Ledger.mutations++;
 					}
 					
 					Bot new_bot = new Bot(
@@ -878,7 +892,8 @@ public class Bot extends BotSuper {
 //					new_bot.commands = new_brain;
 					new_bot.genom_array = new_brain;
 					new_bot.set_current_genom(genom_current_idx);//потомок продолжает с того же генома, что и родитель
-					new_bot.clan_color = clan_color;
+					//цвет клана наследуется и чуть сдвигается при каждой мутации — видны родственные группы
+					new_bot.clan_color = mutated ? drift_color(clan_color, 10) : clan_color;
 					//
 					if (seed == 1) {
 						new_bot.state = 1;
@@ -890,6 +905,7 @@ public class Bot extends BotSuper {
 					}
 					//
 					iterator.add(new_bot);
+					Ledger.births++;
 					map[pos[0]][pos[1]] = new_bot;
 				}
 			}
@@ -928,7 +944,9 @@ public class Bot extends BotSuper {
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 					if (org_map[pos[0]][pos[1]] > 0) {
 						count_org++;
-						org_map[pos[0]][pos[1]] = Math.max(0, org_map[pos[0]][pos[1]] - 0.0001);
+						double org_before = org_map[pos[0]][pos[1]];
+						org_map[pos[0]][pos[1]] = Math.max(0, org_before - 0.0001);
+						Ledger.out_org_other += org_before - org_map[pos[0]][pos[1]];
 					}
 				}				
 			}
@@ -969,10 +987,14 @@ public class Bot extends BotSuper {
 	}
 	//
 	public void die_with_organics() {//умереть с появлением органики
+		die_with_organics(Ledger.DIE_OTHER);
+	}
+	public void die_with_organics(int cause) {//cause — причина смерти для журнала (Ledger.DIE_*)
 		if (killed == 1) {//повторная смерть удваивала органику и выброс газов
 			return;
 		}
 		killed = 1;
+		Ledger.die(cause);
 		if (queen == 1) {//корона переходит наследнице, иначе вся колония гибнет вместе с королевой
 			pass_crown();
 		}
@@ -980,6 +1002,9 @@ public class Bot extends BotSuper {
 		//закон сохранения: в органику уходит тело (energy_for_multiply, потраченное при рождении)
 		//и вся оставшаяся энергия клетки
 		double body = Constant.energy_for_multiply / 9.0;
+		if (energy < 0) {//отрицательная энергия при смерти просто списывается
+			Ledger.in_negative += -energy;
+		}
 		double enr = (Constant.energy_for_multiply + Math.max(energy, 0)) / 9.0;
 		energy = 0;
 		for (int i = 0; i < 8; i++) {
@@ -995,6 +1020,7 @@ public class Bot extends BotSuper {
 			oxygen_map[xpos][ypos] = 0;
 		}
 		if(org_map[xpos][ypos] > Constant.org_die_level) {
+			Ledger.out_org_clamp += org_map[xpos][ypos] - Constant.org_die_level;
 			org_map[xpos][ypos] = Constant.org_die_level;
 		}
 //		if (co2_map[xpos][ypos] > 1) {
@@ -1088,6 +1114,13 @@ public class Bot extends BotSuper {
 			c = new Color(127, 60, 0);
 		}
 		return(c);
+	}
+	//
+	public static Color drift_color(Color c, int amount) {//цвет со случайным сдвигом каждого канала на ±amount
+		return new Color(
+			Constant.border(c.getRed() + rand.nextInt(-amount, amount + 1), 255, 0),
+			Constant.border(c.getGreen() + rand.nextInt(-amount, amount + 1), 255, 0),
+			Constant.border(c.getBlue() + rand.nextInt(-amount, amount + 1), 255, 0));
 	}
 	//
 	public void go_red() {//краснеть

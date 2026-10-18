@@ -375,6 +375,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 					}
 				}
 			}
+			Ledger.reset(this);
 		}finally {
 			lock.unlock();
 		}
@@ -409,6 +410,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	//ШАГ СИМУЛЯЦИИ (вызывается под lock)
 	//
 	public void step() {
+		Ledger.begin_step();
 		steps++;
 		b_count = 0;
 		obj_count = 0;
@@ -434,6 +436,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		if (selection != null && selection.killed == 1) {
 			selection = null;
 		}
+		Ledger.end_step(this);
 	}
 
 }
