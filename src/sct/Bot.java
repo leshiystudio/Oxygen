@@ -1181,6 +1181,10 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
+	public boolean has_chain(int rot) {//для отрисовки
+		return chain[rot];
+	}
+	//
 	public int count_chains() {
 		int sum = 0;
 		for (int i = 0; i < 8; i++) {

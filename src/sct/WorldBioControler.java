@@ -6,10 +6,13 @@ import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+import javax.swing.AbstractAction;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
 public class WorldBioControler extends JPanel{
@@ -30,6 +33,8 @@ public class WorldBioControler extends JPanel{
 	private JButton button_render_bot = new JButton("Render Bots: On");
 	private JLabel label_bot_count = new JLabel();
 	private JLabel label_steps = new JLabel();
+	private JLabel label_ms = new JLabel();
+	private JLabel label_speed = new JLabel();
 	private JLabel label_draw_type = new JLabel();
 	private JLabel label_res_draw_type = new JLabel();
 	private JLabel label_sel_pos = new JLabel();
@@ -43,7 +48,6 @@ public class WorldBioControler extends JPanel{
 		this.width = width;
 		this.height = height;
 
-        setBackground(Color.LIGHT_GRAY);
         setPreferredSize(new Dimension(width, height));
         setLayout(null);
 
@@ -64,12 +68,28 @@ public class WorldBioControler extends JPanel{
         button_render_bot.addActionListener(new render_bot());
         place(button_render_bot, button_h);
 
+        JButton step_button = new JButton("Step (N)");
+        step_button.addActionListener(e -> world.request_step());
+        place(step_button, button_h);
+
+        JButton slower_button = new JButton("<< (,)");
+        slower_button.addActionListener(e -> world.slower());
+        JButton faster_button = new JButton("(.) >>");
+        faster_button.addActionListener(e -> world.faster());
+        place_pair(slower_button, faster_button, button_h);
+        place(label_speed, label_h);
+
+        JButton theme_button = new JButton("Theme: dark / light");
+        theme_button.addActionListener(e -> Theme.toggle(SwingUtilities.getWindowAncestor(this)));
+        place(theme_button, button_h);
+
         //
         //статистика
         //
         header("Stats");
         place(label_bot_count, label_h);
         place(label_steps, label_h);
+        place(label_ms, label_h);
         place(label_draw_type, label_h);
         place(label_res_draw_type, label_h);
 
@@ -107,14 +127,41 @@ public class WorldBioControler extends JPanel{
         place(label_sel_type, label_h);
         place(label_sel_genom, label_h);
 
+        bind_key("SPACE", () -> button_start_stop.doClick());
+        bind_key("N", world::request_step);
+        bind_key("COMMA", world::slower);
+        bind_key("PERIOD", world::faster);
+
         refresh();
         new Timer(100, e -> refresh()).start();//подписи обновляются по таймеру, а не из paintComponent
 	}
 
 	private void place(JComponent c, int h) {//ставит элемент в следующий свободный ряд
+		if (c instanceof JButton) {
+			c.setFocusable(false);//иначе пробел нажимает кнопку в фокусе вместо паузы
+		}
 		c.setBounds(padding, cursor_y, width - padding * 2, h);
 		add(c);
 		cursor_y += h + padding;
+	}
+	private void place_pair(JComponent a, JComponent b, int h) {//два элемента в одном ряду
+		a.setFocusable(false);
+		b.setFocusable(false);
+		int half = (width - padding * 3) / 2;
+		a.setBounds(padding, cursor_y, half, h);
+		b.setBounds(padding * 2 + half, cursor_y, half, h);
+		add(a);
+		add(b);
+		cursor_y += h + padding;
+	}
+	private void bind_key(String key, Runnable action) {//клавиша работает, где бы ни был фокус в окне
+		getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(key), key);
+		getActionMap().put(key, new AbstractAction() {
+			private static final long serialVersionUID = 1L;
+			public void actionPerformed(ActionEvent e) {
+				action.run();
+			}
+		});
 	}
 	private void header(String text) {//заголовок группы с отступом от предыдущей
 		if (cursor_y > padding) {
@@ -138,6 +185,8 @@ public class WorldBioControler extends JPanel{
 	private void refresh() {
 		label_bot_count.setText("bot count: " + world.b_count);
 		label_steps.setText("steps: " + world.steps);
+		label_ms.setText(String.format("ms/step: %.1f", world.ms_per_step));
+		label_speed.setText("speed: " + world.speed_name());
 		label_draw_type.setText("bots: " + Constant.draw_type_names[world.draw_type]);
 		label_res_draw_type.setText("background: " + Constant.res_type_names[world.res_draw_type]);
 

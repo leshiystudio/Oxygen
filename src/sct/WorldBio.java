@@ -1,24 +1,15 @@
 package sct;
 
-import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
-//import sct.World.BotListener;
-
 import java.awt.BasicStroke;
-
-//import sct.World.BotListener;
-
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.MouseInfo;
 import java.awt.Point;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
@@ -29,21 +20,22 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.ListIterator;
 import java.util.Random;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class WorldBio extends JPanel implements MouseWheelListener, MouseListener, MouseMotionListener {
 	/**
-	 * 
+	 *
 	 */
 	private static final long serialVersionUID = 1L;
 	ArrayList<Bot> objects;
 	Bot[][] Map = new Bot[Constant.world_scale[0]][Constant.world_scale[1]];
 	Random rand = new Random();
-	Timer timer;
+	Timer timer;//перерисовка окна (~30 кадров/с); сама симуляция идет в sim_thread
 	double[][] oxygen_map;//кислород
 	double[][] co2_map;//углекислота
 	double[][] org_map;//органика
 	double[][] mnr_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];//минералы
-	int[][] height_map = new int[Constant.world_scale[0]][Constant.world_scale[1]];//карта высот	
+	int[][] height_map = new int[Constant.world_scale[0]][Constant.world_scale[1]];//карта высот
 	private double zoomFactor = 1;
 	private double prevZoomFactor = 1;
 	private boolean zoomer;
@@ -56,35 +48,48 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	private Point startPoint;
 	protected boolean render = true;
 	protected boolean render_border = false;
-	protected boolean pause = false;
-	// старый код --
-	int zoom = 0;
-	int[] zoom_disp_pos = {100, 100};
-	//--
+	protected volatile boolean pause = false;
 	// параметры
-	int delay = 10;//скорость
 	int steps = 0;//количество шагов симуляции
 	int b_count = 0;//количество ботов
 	int obj_count = 0;//количество объектов
 	int org_count = 0;//количество семян
 	int population = 0;//номер популяции (сколько раз создавали мир)
-	Bot selection = null;//выбранный бот
+	volatile Bot selection = null;//выбранный бот
+	volatile Bot prev_selection = null;//предыдущий выбранный — для сравнения геномов
 	int draw_type = 0;//режим отрисовки
 	int res_draw_type = 0;//режим отрисовки фона/ресурсов/окружения
-	
+	//
+	//поток симуляции
+	//Все изменения мира и его чтение для отрисовки — только под lock.
+	//Справедливая блокировка: поток окна не ждет дольше одного шага симуляции.
+	final ReentrantLock lock = new ReentrantLock(true);
+	public static final int[] speed_levels = {1, 2, 5, 10, 20, 50, 0};//шагов за кадр, 0 — без ограничения
+	volatile int speed_idx = speed_levels.length - 1;
+	private volatile boolean step_once = false;
+	private static final long frame_ns = 33_000_000L;
+	volatile double ms_per_step = 0;//скорость, для панели
+	private final PixelRenderer renderer = new PixelRenderer();
+
 
 	public WorldBio() {
+		this(true);
+	}
+	public WorldBio(boolean start_threads) {//false — мир без окна и потоков (замеры, тесты)
 		setLayout(null);
-		timer = new Timer(delay, new BotListener());
 		objects = new ArrayList<Bot>();
-		setBackground(new Color(255, 255, 255));
-		setBackground(new Color(255, 255, 255));
+		setBackground(new Color(Theme.world_bg));
 		initComponent();
-		
+
 		newPopulation();
-		
-		timer.start();
-		
+
+		timer = new Timer(33, e -> repaint());
+		if (start_threads) {
+			timer.start();
+			Thread sim_thread = new Thread(this::simulation_loop, "simulation");
+			sim_thread.setDaemon(true);
+			sim_thread.start();
+		}
 	}
 
 	private void initComponent() {
@@ -93,32 +98,93 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		addMouseListener(this);
 	}
 
+	//
+	//ПОТОК СИМУЛЯЦИИ
+	//
+	private void simulation_loop() {
+		while (true) {
+			long frame_start = System.nanoTime();
+			int n;
+			if (pause) {
+				n = step_once ? 1 : 0;
+				step_once = false;
+			}else {
+				n = speed_levels[speed_idx];
+			}
+			if (n == 0 && !pause) {//без ограничения: шаги подряд до конца кадра
+				while (!pause && System.nanoTime() - frame_start < frame_ns) {
+					locked_step();
+				}
+				continue;
+			}
+			for (int i = 0; i < n; i++) {
+				locked_step();
+			}
+			long rest = frame_ns - (System.nanoTime() - frame_start);
+			if (rest > 0) {
+				try {
+					Thread.sleep(rest / 1_000_000L, (int)(rest % 1_000_000L));
+				}catch (InterruptedException e) {
+					return;
+				}
+			}
+		}
+	}
+	private void locked_step() {
+		lock.lock();
+		try {
+			long t0 = System.nanoTime();
+			step();
+			ms_per_step = ms_per_step * 0.9 + (System.nanoTime() - t0) / 1e6 * 0.1;
+		}finally {
+			lock.unlock();
+		}
+	}
+	public void request_step() {//один шаг на паузе
+		step_once = true;
+	}
+	public void faster() {
+		speed_idx = Math.min(speed_levels.length - 1, speed_idx + 1);
+	}
+	public void slower() {
+		speed_idx = Math.max(0, speed_idx - 1);
+	}
+	public String speed_name() {
+		int n = speed_levels[speed_idx];
+		return n == 0 ? "max" : n + " steps/frame";
+	}
+
 	@Override
 	public void paintComponent(Graphics g) {
 		super.paintComponent(g);
 		boolean draggerOld = dragger;
 
 		Graphics2D g2 = (Graphics2D) g;
+		g2.setColor(new Color(Theme.world_bg));
+		g2.fillRect(0, 0, getWidth(), getHeight());
 		int width = Constant.world_scale[0] * Constant.size;
 		int height = Constant.world_scale[1] * Constant.size;
 
-		BufferedImage buff4 = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+		BufferedImage buff4;
+		lock.lock();//мир не меняется, пока снимаем кадр
+		try {
+			buff4 = renderer.render(this);
+		}finally {
+			lock.unlock();
+		}
 		Graphics2D g2dTail = buff4.createGraphics();
-		g2dTail.setColor(Color.WHITE);
-		g2dTail.fillRect(0, 0, width, height);
-		
+
 		AffineTransform at = new AffineTransform();
-		
+
 		if (zoomer) {
 			double xRel = MouseInfo.getPointerInfo().getLocation().getX() - getLocationOnScreen().getX();
 			double yRel = MouseInfo.getPointerInfo().getLocation().getY() - getLocationOnScreen().getY();
-			//System.out.println("xRel: "+xRel+", yRel: "+yRel);
 
 			double zoomDiv = zoomFactor / prevZoomFactor;
 
 			xOffset = (zoomDiv) * (xOffset) + (1 - zoomDiv) * xRel;
 			yOffset = (zoomDiv) * (yOffset) + (1 - zoomDiv) * yRel;
-			
+
 			at.translate(xOffset, yOffset);
 			at.scale(zoomFactor, zoomFactor);
 			prevZoomFactor = zoomFactor;
@@ -143,64 +209,23 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		}
 
 	    if (render_border) {
-			g2dTail.setColor(new Color(50, 50, 200));
-			g2dTail.fillRect(-100, -100, 0, 0);
 			g2dTail.setColor(new Color(50, 250, 50));
 			g2dTail.fillRect(0, 0, 100, 100);
-			g2dTail.drawRect(0, 0, width, height);			
+			g2dTail.drawRect(0, 0, width, height);
 	    }
-
-		//------------------------------------------
-		//Отрисовываем мир на тайле
-		if (render) {
-			if (res_draw_type != 0) {
-				if (res_draw_type == 1) {
-					DrawBio.draw_ox(g2dTail, oxygen_map, org_map, zoom, zoom_disp_pos);
-				}else if (res_draw_type == 2){
-					DrawBio.draw_org_ox(g2dTail, org_map, oxygen_map, zoom, zoom_disp_pos);
-				}else if (res_draw_type == 3) {
-					DrawBio.draw_mnr(g2dTail, mnr_map);
-				}else if (res_draw_type == 4) {
-					DrawBio.draw_co2(g2dTail, co2_map, org_map, zoom, zoom_disp_pos);
-				}else if (res_draw_type == 5) {
-					DrawBio.draw_height(g2dTail, height_map, zoom, zoom_disp_pos);
-				}
-			}
-			for(Bot b: objects) {
-				b.Draw(g2dTail, draw_type, zoom, zoom_disp_pos);
-			}
-			if (draw_type == 7) {//связи королев с подчиненными
-				for(Bot b: objects) {
-					if (b.queen == 1) {
-						b.queen_draw(g2dTail);
-					}
-				}
-				for(Bot b: objects) {//королевы поверх линий, чтобы их было видно
-					if (b.queen == 1 && b.killed == 0) {
-						b.queen_mark(g2dTail);
-					}
-				}
-			}
-			if (selection != null) {//выбранный бот
-				g2dTail.setColor(Color.RED);
-				g2dTail.setStroke(new BasicStroke(2));
-				g2dTail.drawRect(selection.xpos * Constant.size - 2, selection.ypos * Constant.size - 2, Constant.size + 4, Constant.size + 4);
-				g2dTail.setStroke(new BasicStroke(1));
-			}
-		}
-		//------------------------------------------
+	    g2dTail.dispose();
 
 		// Далее множим тайл для создания иллюзии бесконечного мира
 	    // Размеры тайла
-	    int tileWidth = width; 
-	    int tileHeight = height; 
+	    int tileWidth = width;
+	    int tileHeight = height;
 
 	    // Размеры панели
 	    Dimension panelSize = getSize();
-	    
+
 	    double xOffsetTile;
 	    double yOffsetTile;
-	    
+
 		if (draggerOld) {
 			xOffsetTile = xOffset + xDiff;
 			yOffsetTile = yOffset + yDiff;
@@ -215,16 +240,9 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	    int visibleXEnd = visibleXStart + (int) (panelSize.width / zoomFactor + tileWidth*2);
 	    int visibleYEnd = visibleYStart + (int) (panelSize.height / zoomFactor + tileHeight*2);
 
-	    int xTailDrawCount = 0;
-	    int yTailDrawCount = 0;
-	    
 	    // Отрисовка тайлов в видимой области
 	    for (int x = (visibleXStart / tileWidth) * tileWidth; x < visibleXEnd; x += tileWidth) {
-	    	xTailDrawCount++;
-	    	yTailDrawCount=0;
 	        for (int y = (visibleYStart / tileHeight) * tileHeight; y < visibleYEnd; y += tileHeight) {
-	        	yTailDrawCount++;
-	            // Отрисовка тайла
 	            g2.drawImage(buff4, x, y, tileWidth, tileHeight, null);
 	        }
 	    }
@@ -241,15 +259,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			g.setColor(new Color(50, 50, 200));
 			g2.drawRect(0, 0, 100, 100);
 			paintCoordGrid(g2);
-
-			// попытка отрисовать статичные объекты
-//			g2.setStroke(new BasicStroke( (int)Math.ceil(4 / zoomFactor) ));
-//			g2.setColor(Color.RED);
-//			g2.drawRect( (int) Math.ceil( (getWidth()-xOffsetTile-200) * 1/zoomFactor ), (int) Math.ceil(-yOffsetTile * 1/zoomFactor), (int) Math.ceil(200*1/zoomFactor), (int) Math.ceil(getHeight()*1/zoomFactor) );
-	    	
 	    }
-
-
 	}
 
 	public void paintCoordGrid(Graphics g) {
@@ -288,31 +298,33 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 
 	@Override
 	public void mouseMoved(MouseEvent e) {
-		// TODO Auto-generated method stub
-
 	}
-	
+
+	public int[] world_cell(MouseEvent e) {//клетка мира под курсором
+		int xLocal = Constant.mod((int)Math.floor((e.getX() - xOffset) / zoomFactor / Constant.size), Constant.world_scale[0]);
+		int yLocal = Constant.mod((int)Math.floor((e.getY() - yOffset) / zoomFactor / Constant.size), Constant.world_scale[1]);
+		return new int[]{xLocal, yLocal};
+	}
+
 	@Override
 	public void mouseClicked(MouseEvent e) {
-		Point curPoint = e.getLocationOnScreen();
-		xDiff = curPoint.x - startPoint.x;
-		yDiff = curPoint.y - startPoint.y;
-
-		int x = e.getX();
-		int y = e.getY();
-
-		int xLocal = Constant.mod((int)((x-xOffset) / zoomFactor / Constant.size), Constant.world_scale[0] );
-		int yLocal = Constant.mod((int)((y-yOffset) / zoomFactor / Constant.size), Constant.world_scale[1] );
-		
-		Point p = e.getPoint();
-		System.out.println("MouseEvent. x: "+xLocal+", y: "+yLocal+", Point: "+p);
-		Bot b = Map[xLocal][yLocal];//выбор бота
-		if (b != null && b.killed == 0) {
-			selection = b;
-		}else {
-			selection = null;
+		int[] c = world_cell(e);
+		lock.lock();
+		try {
+			Bot b = Map[c[0]][c[1]];//выбор бота
+			select(b != null && b.killed == 0 ? b : null);
+		}finally {
+			lock.unlock();
 		}
 		repaint();
+	}
+	public void select(Bot b) {
+		if (b != selection) {
+			if (selection != null) {
+				prev_selection = selection;
+			}
+			selection = b;
+		}
 	}
 
 	@Override
@@ -325,45 +337,46 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	public void mouseReleased(MouseEvent e) {
 		released = true;
 		repaint();
-		
+
 	}
 
 	@Override
 	public void mouseEntered(MouseEvent e) {
-		// TODO Auto-generated method stub
-
 	}
 
 	@Override
 	public void mouseExited(MouseEvent e) {
-		// TODO Auto-generated method stub
-
 	}
-	
+
 	public void newPopulation() {//создать случайную популяцию
-		kill_all();
-		for (int i = 0; i < Constant.starting_bot_count; i++) {
-			while(true){
-				int x = rand.nextInt(Constant.world_scale[0]);
-				int y = rand.nextInt(Constant.world_scale[1]);
-				if (Map[x][y] == null) {
-					Bot new_bot = new Bot(
-						x,
-						y,
-						new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256)),
-						1000,
-						0,
-						oxygen_map,
-						co2_map,
-						org_map,
-						Map,
-						objects
-					);
-					objects.add(new_bot);
-					Map[x][y] = new_bot;
-					break;
+		lock.lock();
+		try {
+			kill_all();
+			for (int i = 0; i < Constant.starting_bot_count; i++) {
+				while(true){
+					int x = rand.nextInt(Constant.world_scale[0]);
+					int y = rand.nextInt(Constant.world_scale[1]);
+					if (Map[x][y] == null) {
+						Bot new_bot = new Bot(
+							x,
+							y,
+							new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256)),
+							1000,
+							0,
+							oxygen_map,
+							co2_map,
+							org_map,
+							Map,
+							objects
+						);
+						objects.add(new_bot);
+						Map[x][y] = new_bot;
+						break;
+					}
 				}
 			}
+		}finally {
+			lock.unlock();
 		}
 		repaint();
 	}
@@ -371,6 +384,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		steps = 0;
 		population++;
 		selection = null;
+		prev_selection = null;
 		objects = new ArrayList<Bot>();
 		SimplexNoise noise = new SimplexNoise(rand.nextInt(-1000000000, 1000000000));//шум
 		Map = new Bot[Constant.world_scale[0]][Constant.world_scale[1]];
@@ -389,78 +403,37 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 				height_map[x][y] = (int)(noise.sumOctaves(8, x, y, 0.5F, 0.007F, 0, 1000));
 			}
 		}
-	}	
-	
+	}
+
 	//
-	//МЫШЬ И ОБНОВЛЕНИЕ МИРА
+	//ШАГ СИМУЛЯЦИИ (вызывается под lock)
 	//
-	private class BotListener extends MouseAdapter implements ActionListener{
-		public void actionPerformed(ActionEvent e) {
-			if (!pause) {
-				update();
+	public void step() {
+		steps++;
+		b_count = 0;
+		obj_count = 0;
+		org_count = 0;
+		//
+		ListIterator<Bot> bot_iterator = objects.listIterator();
+		while (bot_iterator.hasNext()) {
+			Bot next_bot = bot_iterator.next();
+			next_bot.Update(bot_iterator);
+			obj_count++;
+			if (next_bot.state != 0) {
+				org_count++;
+			}else {
+				b_count++;
 			}
-			//
-			ListIterator<Bot> iterator = objects.listIterator();
-			while (iterator.hasNext()) {
-				Bot next_bot = iterator.next();
-				if (next_bot.killed == 1) {
-					iterator.remove();
-				}
-			}
-			if (selection != null && selection.killed == 1) {
-				selection = null;
-			}
-			//
-			repaint();
+		}
+		//
+		WorldUtils.gas(oxygen_map, org_map);
+		WorldUtils.gas(co2_map, org_map);
+		WorldUtils.minerals(mnr_map);
+		//
+		objects.removeIf(b -> b.killed == 1);//один проход вместо удаления по одному из середины списка
+		if (selection != null && selection.killed == 1) {
+			selection = null;
 		}
 	}
-	//шаг симуляции
-	public void update() {
-		for (int i = 0; i < 5; i++) {
-			steps++;
-			b_count = 0;
-			obj_count = 0;
-			org_count = 0;
-			//
-			ListIterator<Bot> bot_iterator = objects.listIterator();
-			while (bot_iterator.hasNext()) {
-				Bot next_bot = bot_iterator.next();
-				next_bot.Update(bot_iterator);
-//				if (selection != null) {
-//					if (next_bot.xpos == selection.xpos && next_bot.ypos == selection.ypos) {
-//						if (next_bot != selection) {
-//							selection = null;
-//							save_button.setEnabled(false);
-//							show_brain_button.setEnabled(false);
-//							sh_brain = false;
-//						}
-//					}
-//				}
-				obj_count++;
-				if (next_bot.state != 0) {
-					org_count++;
-				}else {
-					b_count++;
-				}
-			}
-			//
-//			if (selection != null) {
-//				if (selection.killed == 1 || Map[selection.xpos][selection.ypos] == null || selection.state != 0){
-//					selection = null;
-//					save_button.setEnabled(false);
-//					show_brain_button.setEnabled(false);
-//					sh_brain = false;
-//				}
-//			}
-			//
-			WorldUtils.gas(oxygen_map, org_map);
-			WorldUtils.gas(co2_map, org_map);
-			WorldUtils.minerals(mnr_map);
-//			//
-//			if (rec && steps % 25 == 0) {
-//				record();
-//			}
-		}
-	}	
-	
+
 }
