@@ -13,7 +13,7 @@ import java.util.function.Predicate;
 
 public class Bot extends BotSuper {
 	ArrayList<Bot> objects;
-	Random rand = new Random();
+	static Random rand = new Random();//один на всех ботов: раньше создавался у каждого; зерно задается в Main
 	public Bot[][] map;
 	//
 	private int x;//позиция
