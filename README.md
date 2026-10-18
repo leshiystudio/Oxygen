@@ -64,7 +64,7 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 
 ## Растения (модель biosim)
 
-Пакет `sct.plants` — перенос модели [biosim](../../../../admin/Rep/biosim): ростки, корни, листья,
+Пакет `sct.plants` — перенос модели biosim (отдельный проект на Python + numba): ростки, корни, листья,
 проводники, трупы, почва. Правила — как в biosim, энергия целочисленная. Органика общая с
 ботами Oxygen, энергия почвы — свой слой (фон **Soil**).
 
