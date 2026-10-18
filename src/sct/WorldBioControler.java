@@ -2,160 +2,162 @@ package sct;
 
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Graphics;
+import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.Timer;
 
 public class WorldBioControler extends JPanel{
-	
+
 	protected WorldBio world;
 	protected int width;
 	protected int height;
-	
+
+	//раскладка: элементы идут сверху вниз по одному в ряд, поэтому пересечься не могут
+	private static final int padding = 4;
+	private static final int button_h = 26;
+	private static final int label_h = 18;
+	private static final int group_gap = 10;
+	private int cursor_y = padding;
+
 	private JButton button_start_stop = new JButton("Stop");
 	private JButton button_render_border = new JButton("Render Border: Off");
 	private JButton button_render_bot = new JButton("Render Bots: On");
-	private JLabel label_bot_count = new JLabel("label_bot_count: ");
-	
+	private JLabel label_bot_count = new JLabel();
+	private JLabel label_steps = new JLabel();
+	private JLabel label_draw_type = new JLabel();
+	private JLabel label_res_draw_type = new JLabel();
+	private JLabel label_sel_pos = new JLabel();
+	private JLabel label_sel_energy = new JLabel();
+	private JLabel label_sel_type = new JLabel();
+	private JLabel label_sel_genom = new JLabel();
+	private JPanel sel_color_box = new JPanel();
+
 	public WorldBioControler(WorldBio world, int width, int height) {
 		this.world = world;
 		this.width = width;
 		this.height = height;
-		int padding = 5;
-		int x = padding; 
-		int w = width - padding*2;
-		int h = 30;
 
         setBackground(Color.LIGHT_GRAY);
         setPreferredSize(new Dimension(width, height));
-        //setLayout(new FlowLayout());
         setLayout(null);
-        
+
+        //
+        //управление симуляцией
+        //
+        header("Simulation");
 		button_start_stop.addActionListener(new start_stop());
-		button_start_stop.setBounds(x, (h+padding)*0+padding, w, h);
-        add(button_start_stop);
-        
+        place(button_start_stop, button_h);
+
         JButton new_population_button = new JButton("New population");
         new_population_button.addActionListener(new nwp());
-        new_population_button.setBounds(x, (h+padding)*1+padding, w, h);
-        add(new_population_button);
+        place(new_population_button, button_h);
 
         button_render_border.addActionListener(new render_border());
-		button_render_border.setBounds(x, (h+padding)*2+padding, w, h);
-        add(button_render_border);
+        place(button_render_border, button_h);
 
         button_render_bot.addActionListener(new render_bot());
-		button_render_bot.setBounds(x, (h+padding)*3+padding, w, h);
-        add(button_render_bot);
+        place(button_render_bot, button_h);
 
-        label_bot_count.setBounds(x, (h+padding)*4+padding, w, h);
-        add(label_bot_count);
-        
+        //
+        //статистика
+        //
+        header("Stats");
+        place(label_bot_count, label_h);
+        place(label_steps, label_h);
+        place(label_draw_type, label_h);
+        place(label_res_draw_type, label_h);
+
         //
         //смена режимов отрисовки
         //
-        JButton predators_button = new JButton("Predators");
-        predators_button.addActionListener(new change_draw_type(0));
-		predators_button.setBounds(x, (h+padding)*10+padding, w, h);
-        add(predators_button);
-        //
-        JButton energy_button = new JButton("Energy");
-        energy_button.addActionListener(new change_draw_type(2));
-		energy_button.setBounds(x, (h+padding)*11+padding, w, h);
-        add(energy_button);
-        //
-        JButton clan_button = new JButton("Clans");
-		clan_button.addActionListener(new change_draw_type(3));
-		clan_button.setBounds(x, (h+padding)*12+padding, w, h);
-        add(clan_button);
-        //
-        JButton age_button = new JButton("Age");
-        age_button.addActionListener(new change_draw_type(4));
-		age_button.setBounds(x, (h+padding)*13+padding, w, h);
-        add(age_button);
-        //
-        JButton color_button = new JButton("Color");
-        color_button.addActionListener(new change_draw_type(1));
-		color_button.setBounds(x, (h+padding)*14+padding, w, h);
-        add(color_button);
-        //
-        JButton type_button = new JButton("Type");
-        type_button.addActionListener(new change_draw_type(5));
-        type_button.setBounds(x, (h+padding)*15+padding, w, h);
-        add(type_button);
-        //
-        JButton chain_button = new JButton("Chain");
-        chain_button.addActionListener(new change_draw_type(6));
-        chain_button.setBounds(x, (h+padding)*16+padding, w, h);
-        add(chain_button);
-        //
-        JButton queen_button = new JButton("Queen");
-        queen_button.addActionListener(new change_draw_type(7));
-        queen_button.setBounds(x, (h+padding)*17+padding, w, h);
-        add(queen_button);
+        header("Bot view");
+        draw_type_button("Predators", 0);
+        draw_type_button("Energy", 2);
+        draw_type_button("Clans", 3);
+        draw_type_button("Age", 4);
+        draw_type_button("Color", 1);
+        draw_type_button("Type", 5);
+        draw_type_button("Chain", 6);
+        draw_type_button("Queen", 7);
 
         //
         //смена режимов отрисовки фона
         //
-        JButton none_button = new JButton("None");
-        none_button.addActionListener(new change_res_draw_type(0));
-        none_button.setBounds(x, (h+padding)*18+padding, w, h);
-        add(none_button);
+        header("Background");
+        res_draw_type_button("None", 0);
+        res_draw_type_button("Oxygen", 1);
+        res_draw_type_button("Org + O2", 2);
+        res_draw_type_button("Minerals", 3);
+        res_draw_type_button("Co2", 4);
+
         //
-        JButton ox_button = new JButton("Oxygen");
-        ox_button.addActionListener(new change_res_draw_type(1));
-        ox_button.setBounds(x, (h+padding)*19+padding, w, h);
-        add(ox_button);
+        //выбранный бот
         //
-        JButton org_button = new JButton("Organics");
-        org_button.addActionListener(new change_res_draw_type(2));
-        org_button.setBounds(x, (h+padding)*20+padding, w, h);
-        add(org_button);
-        //
-        JButton mnr_button = new JButton("Minerals");
-        mnr_button.addActionListener(new change_res_draw_type(3));
-        mnr_button.setBounds(x, (h+padding)*21+padding, w, h);
-        add(mnr_button);
-        //
-        JButton co2_button = new JButton("Co2");
-        co2_button.addActionListener(new change_res_draw_type(4));
-        co2_button.setBounds(x, (h+padding)*22+padding, w, h);
-        add(co2_button);
-        
+        header("Selection");
+        sel_color_box.setBounds(width - 35, cursor_y, 25, label_h);
+        add(sel_color_box);
+        place(label_sel_pos, label_h);
+        place(label_sel_energy, label_h);
+        place(label_sel_type, label_h);
+        place(label_sel_genom, label_h);
+
+        refresh();
+        new Timer(100, e -> refresh()).start();//подписи обновляются по таймеру, а не из paintComponent
 	}
 
-	public void paintComponent(Graphics canvas) {
-		super.paintComponent(canvas);
-		
-		label_bot_count.setText("bot_count: "+world.b_count);
+	private void place(JComponent c, int h) {//ставит элемент в следующий свободный ряд
+		c.setBounds(padding, cursor_y, width - padding * 2, h);
+		add(c);
+		cursor_y += h + padding;
+	}
+	private void header(String text) {//заголовок группы с отступом от предыдущей
+		if (cursor_y > padding) {
+			cursor_y += group_gap;
+		}
+		JLabel l = new JLabel(text);
+		l.setFont(l.getFont().deriveFont(Font.BOLD));
+		place(l, label_h);
+	}
+	private void draw_type_button(String text, int draw_type) {
+		JButton b = new JButton(text);
+		b.addActionListener(new change_draw_type(draw_type));
+		place(b, button_h);
+	}
+	private void res_draw_type_button(String text, int res_draw_type) {
+		JButton b = new JButton(text);
+		b.addActionListener(new change_res_draw_type(res_draw_type));
+		place(b, button_h);
+	}
 
-        canvas.drawString("steps: " + world.steps, 5, 35*4+5);
-
-        canvas.drawString("render bot type: " + Constant.draw_type_names[world.draw_type] + " view", 5, 35*5+5);  
-
-        canvas.drawString("render res type: " + Constant.res_type_names[world.res_draw_type] + " view", 5, 35*6+5);
+	private void refresh() {
+		label_bot_count.setText("bot count: " + world.b_count);
+		label_steps.setText("steps: " + world.steps);
+		label_draw_type.setText("bots: " + Constant.draw_type_names[world.draw_type]);
+		label_res_draw_type.setText("background: " + Constant.res_type_names[world.res_draw_type]);
 
         Bot s = world.selection;//выбранный бот
-        int y = 35*23+15;
         if (s != null) {
-        	canvas.drawString("selection: [" + s.xpos + ", " + s.ypos + "]", 5, y);
-        	canvas.drawString("energy: " + String.valueOf((int)s.energy) + ", age: " + (int) s.age, 5, y + 20);
-        	canvas.drawString("type: " + s.type + ", memory: " + s.memory + ", queen: " + s.queen, 5, y + 40);
-        	canvas.drawString("color: (" + s.color.getRed() + ", " + s.color.getGreen() + ", " + s.color.getBlue() + ")", 5, y + 60);
-        	canvas.setColor(s.color);
-        	canvas.fillRect(width - 35, y - 15, 25, 25);
+        	label_sel_pos.setText("position: [" + s.xpos + ", " + s.ypos + "]");
+        	label_sel_energy.setText("energy: " + (int) s.energy + ", age: " + (int) s.age);
+        	label_sel_type.setText("type: " + s.type + ", queen: " + s.queen);
+        	label_sel_genom.setText("genom: " + s.genom_current_idx + ", index: " + s.index);
+        	sel_color_box.setBackground(s.color);
+        	sel_color_box.setVisible(true);
         }else {
-        	canvas.drawString("selection: none", 5, y);
+        	label_sel_pos.setText("none");
+        	label_sel_energy.setText("");
+        	label_sel_type.setText("");
+        	label_sel_genom.setText("");
+        	sel_color_box.setVisible(false);
         }
-
-        repaint();
 	}
-	
+
 	private class start_stop implements ActionListener{
 		public void actionPerformed(ActionEvent e) {
 			world.pause = !world.pause;
@@ -191,12 +193,6 @@ public class WorldBioControler extends JPanel{
 			world.newPopulation();
 		}
 	}
-	private class b_count implements ActionListener{
-		public void actionPerformed(ActionEvent e) {
-			System.out.println("b_count: "+world.b_count);
-			repaint();
-		}
-	}
 
 	//
 	private class change_draw_type implements ActionListener{//смена режима отрисовки(берется из параметра)
@@ -216,5 +212,5 @@ public class WorldBioControler extends JPanel{
 		public void actionPerformed(ActionEvent e) {
 			world.res_draw_type = number;
 		}
-	}	
+	}
 }

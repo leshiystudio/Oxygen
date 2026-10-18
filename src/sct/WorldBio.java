@@ -84,8 +84,6 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		newPopulation();
 		
 		timer.start();
-		JButton button = new JButton("Кнопка Test");
-		add(button);
 		
 	}
 

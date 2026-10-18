@@ -16,8 +16,8 @@ public class Constant {
 	public static int starting_org = 200;
 	public static double ox_render_maximum_coeff = 0.25; //0.25;
 	public static double co2_render_maximum_coeff = 0.25; //0.25;
-	public static String[] draw_type_names = {"predators", "energy", "color", "clans", "age", "types", "chains", "queens"};
-	public static String[] res_type_names = {"none", "oxygen", "organics", "minerals", "co2"};
+	public static String[] draw_type_names = {"predators", "color", "energy", "clans", "age", "types", "chains", "queens"}; //индекс = номер режима в Bot.get_color
+	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2"};
 	public static String[] mouse_func_names = {"select", "set", "remove"};
 	public static int[] zoom_sizes = {5, 5, 10}; //{2, 5, 10};
 	//
