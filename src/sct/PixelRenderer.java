@@ -87,9 +87,10 @@ public class PixelRenderer {
 				}else if (mode == 2) {//органика с кислородом поверх
 					c = Theme.mix(Theme.world_bg, Theme.organics, org / die);
 					c = Theme.mix(c, Theme.oxygen, w.oxygen_map[x][y] / ox_max * (210 / 255.0));
-				}else if (mode == 3) {//минералы (у растений — почва: шкала до порога токсичности)
+				}else if (mode == 3) {//минералы (у растений — почва): корневая шкала до порога токсичности,
+					//иначе стартовые 100 из 1500 на темном фоне почти не видны
 					double scale = w.plants != null ? w.plants.c.max_energy_around : 1000.0;
-					c = Theme.mix(Theme.world_bg, Theme.minerals, w.mnr_map[x][y] / scale);
+					c = Theme.mix(Theme.world_bg, Theme.minerals, Math.sqrt(Math.max(0, w.mnr_map[x][y]) / scale));
 				}else if (mode == 4) {//углекислый газ
 					c = Theme.mix(Theme.world_bg, Theme.co2, w.co2_map[x][y] / co2_max);
 				}else {//высоты
