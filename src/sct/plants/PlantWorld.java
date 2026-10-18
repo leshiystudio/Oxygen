@@ -5,14 +5,14 @@ import java.util.Random;
 
 import sct.IBot;
 
-//То, что растениям нужно от мира: общая сетка, общая органика, свой слой почвы, список мира,
+//То, что растениям нужно от мира: общая сетка, общая органика, слой минералов (почва), список мира,
 //настройки и генератор случайных чисел. Растения хранят ссылку на этот объект, как бот — на карты.
 public class PlantWorld {
 	public static Random rand = new Random();//свой генератор растений; зерно — Presets.apply_seed
 	//
 	public final IBot[][] grid;//общая сетка мира
 	public final double[][] org;//общая органика (у biosim — SOIL[:, 1])
-	public final double[][] soil;//энергия почвы (у biosim — SOIL[:, 0]); только для растений
+	public final double[][] soil;//энергия почвы (у biosim — SOIL[:, 0]) = слой минералов мира
 	public final List<IBot> objects;//список мира — для рождения вне хода (инструменты, тесты)
 	public final PlantConfig c;
 	public final int W, H;

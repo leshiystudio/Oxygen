@@ -14,7 +14,7 @@ public class History {
 		"oxygen", "co2",
 		"ms/step", "balance diff",
 		"d: health", "d: branch lost", "d: toxic soil", "d: soil exhausted",
-		"plants", "plant corpses", "soil energy"
+		"plants", "plant corpses", "minerals (soil)"
 	};
 	public static final int BOTS = 0, SEEDS = 1, QUEENS = 2, SUBS = 3, ENERGY_CELLS = 4, ORGANICS = 5, ENERGY_TOTAL = 6,
 		BIRTHS = 7, DEATHS = 8, MUTATIONS = 9, DEATH_CAUSE0 = 10, UNIQUE = 18, CLANS = 19, OXYGEN = 20, CO2 = 21,
@@ -96,14 +96,7 @@ public class History {
 		data[SUBS][i] = subs;
 		data[ENERGY_CELLS][i] = energy;
 		data[ENERGY_TOTAL][i] = Ledger.total;
-		double soil = 0;
-		if (w.soil_map != null) {
-			for (double[] row : w.soil_map) {
-				for (double v : row) {
-					soil += v;
-				}
-			}
-		}
+		double soil = w.plants != null ? Ledger.sum(w.mnr_map) : 0;//минералы считаются энергией, когда есть растения
 		data[ORGANICS][i] = Ledger.total - energy - (double)(bots + seeds) * Constant.energy_for_multiply - plant_energy - soil;
 		data[PLANTS][i] = plants;
 		data[CORPSES][i] = corpses;

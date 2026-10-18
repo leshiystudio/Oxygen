@@ -44,6 +44,7 @@ public class Ledger {
 	public static double out_plant_punish;//штраф THINK_OLD
 	public static double out_plant_birth;//цена рождения
 	public static double out_soil_decay;//вымывание энергии почвы
+	public static double in_mineral_influx;//случайный приток минералов, если включен при растениях (mineral_influx)
 	public static int births;
 	public static int mutations;
 	public static int[] deaths = new int[die_names.length];
@@ -68,13 +69,14 @@ public class Ledger {
 		out_plant_punish = 0;
 		out_plant_birth = 0;
 		out_soil_decay = 0;
+		in_mineral_influx = 0;
 		births = 0;
 		mutations = 0;
 		java.util.Arrays.fill(deaths, 0);
 	}
 	//
 	public static double in_step() {
-		return in_sun + in_negative + in_plant_sun + in_plant_health;
+		return in_sun + in_negative + in_plant_sun + in_plant_health + in_mineral_influx;
 	}
 	public static double out_step() {
 		return out_life + out_move + out_cap + out_birth_fail + out_org_clamp + out_org_other
@@ -91,12 +93,8 @@ public class Ledger {
 				sum += v;
 			}
 		}
-		if (w.soil_map != null) {//энергия почвы — есть, когда в мире растения
-			for (double[] row : w.soil_map) {
-				for (double v : row) {
-					sum += v;
-				}
-			}
+		if (w.plants != null) {//минералы — почва растений: при растениях это энергия
+			sum += sum(w.mnr_map);
 		}
 		return sum;
 	}
@@ -112,6 +110,16 @@ public class Ledger {
 		total = measure(w);
 		step_diff = total - expected;
 		total_diff += step_diff;
+	}
+	//
+	public static double sum(double[][] m) {
+		double s = 0;
+		for (double[] row : m) {
+			for (double v : row) {
+				s += v;
+			}
+		}
+		return s;
 	}
 	//
 	public static void die(int cause) {

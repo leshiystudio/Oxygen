@@ -129,8 +129,8 @@ public class WorldBioControler extends JPanel{
         //
         header("Background");
         place_pair(res_draw_type_button("None", 0), res_draw_type_button("Oxygen", 1));
-        place_pair(res_draw_type_button("Org + O2", 2), res_draw_type_button("Minerals", 3));
-        place_pair(res_draw_type_button("Co2", 4), res_draw_type_button("Soil", 6));
+        place_pair(res_draw_type_button("Org + O2", 2), res_draw_type_button("Minerals / soil", 3));
+        place_pair(res_draw_type_button("Co2", 4), new JLabel());
 
         //
         //инструмент правой кнопки мыши

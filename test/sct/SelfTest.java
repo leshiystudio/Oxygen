@@ -319,6 +319,13 @@ public class SelfTest {
 		}
 		check("bots and plants live together (" + w.b_count + " bots, " + w.plant_count + " plant cells)", w.b_count + w.plant_count > 0);
 		check("energy balance holds in mixed world", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Constant.mineral_influx = 1;//приток минералов при растениях — отдельная статья журнала
+		w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("energy balance holds with mineral influx on", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Constant.mineral_influx = -1;
 		Constant.starting_plant_count = 0;
 		Presets.seed = -1;
 	}

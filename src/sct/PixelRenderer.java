@@ -87,18 +87,15 @@ public class PixelRenderer {
 				}else if (mode == 2) {//органика с кислородом поверх
 					c = Theme.mix(Theme.world_bg, Theme.organics, org / die);
 					c = Theme.mix(c, Theme.oxygen, w.oxygen_map[x][y] / ox_max * (210 / 255.0));
-				}else if (mode == 3) {//минералы
-					c = Theme.mix(Theme.world_bg, Theme.minerals, w.mnr_map[x][y] / 1000.0);
+				}else if (mode == 3) {//минералы (у растений — почва: шкала до порога токсичности)
+					double scale = w.plants != null ? w.plants.c.max_energy_around : 1000.0;
+					c = Theme.mix(Theme.world_bg, Theme.minerals, w.mnr_map[x][y] / scale);
 				}else if (mode == 4) {//углекислый газ
 					c = Theme.mix(Theme.world_bg, Theme.co2, w.co2_map[x][y] / co2_max);
-				}else if (mode == 6) {//энергия почвы (растения): синий, порог токсичности — насыщенный
-					double soil = w.soil_map == null ? 0 : w.soil_map[x][y];
-					double toxic = sct.plants.PlantConfig.current.max_energy_around;
-					c = Theme.mix(Theme.world_bg, Theme.oxygen, soil / toxic);
 				}else {//высоты
 					c = Theme.mix(Theme.world_bg, Theme.minerals, w.height_map[x][y] / 1000.0);
 				}
-				if (mode != 3 && mode != 5 && mode != 6 && org >= die) {
+				if (mode != 3 && mode != 5 && org >= die) {
 					c = Theme.dead_zone;
 				}
 				fill_cell(x, y, s, c);

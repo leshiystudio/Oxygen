@@ -66,7 +66,9 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 
 Пакет `sct.plants` — перенос модели biosim (отдельный проект на Python + numba): ростки, корни, листья,
 проводники, трупы, почва. Правила — как в biosim, энергия целочисленная. Органика общая с
-ботами Oxygen, энергия почвы — свой слой (фон **Soil**).
+ботами Oxygen. Почва растений — слой **минералов** мира (фон **Minerals / soil**): органика
+минерализуется в минералы, корни их забирают. Случайный приток минералов Oxygen по умолчанию
+работает только в мире без растений (`--set mineral_influx=1|0|-1`).
 
 ```bash
 java -cp out sct.Main --set starting_bot_count=0 --set starting_plant_count=1500     # только растения

@@ -35,10 +35,9 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	double[][] oxygen_map;//кислород
 	double[][] co2_map;//углекислота
 	public double[][] org_map;//органика (общая: боты Oxygen и растения)
-	public double[][] soil_map;//энергия почвы — только когда в мире растения (иначе null)
 	public sct.plants.PlantWorld plants;//растения: общие данные мира для них (иначе null)
 	int plant_count = 0;//клеток растений (с трупами)
-	double[][] mnr_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];//минералы
+	double[][] mnr_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];//минералы; когда в мире растения — их почва (энергия почвы biosim)
 	int[][] height_map = new int[Constant.world_scale[0]][Constant.world_scale[1]];//карта высот
 	private double zoomFactor = 1;
 	private double prevZoomFactor = 1;
@@ -410,22 +409,20 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		repaint();
 	}
 	private void spawn_plants() {//ростки растений — как init_world в biosim
-		soil_map = null;
 		plants = null;
 		if (Constant.starting_plant_count <= 0) {
 			return;
 		}
 		sct.plants.PlantConfig c = sct.plants.PlantConfig.current;
-		soil_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
-		for (int x = 0; x < Constant.world_scale[0]; x++) {
+		for (int x = 0; x < Constant.world_scale[0]; x++) {//минералы — почва растений: органика минерализуется в них, корни их забирают
 			for (int y = 0; y < Constant.world_scale[1]; y++) {
-				soil_map[x][y] = c.energy_around_start_value;
+				mnr_map[x][y] = c.energy_around_start_value;
 				if (Constant.starting_bot_count <= 0) {//мир только из растений — стартовая органика biosim
 					org_map[x][y] = c.organic_around_start_value;
 				}
 			}
 		}
-		plants = new sct.plants.PlantWorld(Map, org_map, soil_map, objects, c);
+		plants = new sct.plants.PlantWorld(Map, org_map, mnr_map, objects, c);
 		Brain<sct.plants.Plant> brain = c.think_mode == sct.plants.PlantConfig.THINK_OLD ? sct.plants.ThinkOld.instance : sct.plants.ThinkNew.instance;
 		int created = 0;
 		int tries = 0;
@@ -500,7 +497,16 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		}
 		WorldUtils.gas(oxygen_map, org_map);
 		WorldUtils.gas(co2_map, org_map);
-		WorldUtils.minerals(mnr_map);
+		boolean influx = Constant.mineral_influx > 0 || (Constant.mineral_influx < 0 && plants == null);
+		if (influx) {
+			if (plants != null) {//минералы — энергия растений: приток (и срез до 1000) — статья журнала
+				double before = Ledger.sum(mnr_map);
+				WorldUtils.minerals(mnr_map);
+				Ledger.in_mineral_influx += Ledger.sum(mnr_map) - before;
+			}else {
+				WorldUtils.minerals(mnr_map);
+			}
+		}
 		//
 		objects.removeIf(b -> !b.alive());//один проход вместо удаления по одному из середины списка
 		if (selection != null && selection.killed == 1) {

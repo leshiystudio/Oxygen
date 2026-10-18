@@ -18,7 +18,7 @@ public class Constant {
 	public static double ox_render_maximum_coeff = 0.25; //0.25;
 	public static double co2_render_maximum_coeff = 0.25; //0.25;
 	public static String[] draw_type_names = {"predators", "color", "energy", "clans", "age", "types", "chains", "queens", "kin"}; //индекс = номер режима в Bot.get_color
-	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2", "height", "soil"};
+	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2", "height"};
 	public static String[] mouse_func_names = {"select", "set", "remove"};
 	public static int[] zoom_sizes = {5, 5, 10}; //{2, 5, 10};
 	//
@@ -50,6 +50,7 @@ public class Constant {
 	//
 	public static String bot_actions_off = "";//выключенные действия бота через запятую (BotAction), например "attack,seed"
 	public static String bot_brain = "genome";//мозг ботов (Brains): genome — геном команд
+	public static int mineral_influx = -1;//случайный приток минералов в нижнюю четверть мира: 1 — да, 0 — нет, -1 — только в мире без растений
 	public static String plant_actions_off = "";//выключенные действия растений (PlantAction), например "eat,move"
 	//
 	public static double pht_coeff = 110; //400;
