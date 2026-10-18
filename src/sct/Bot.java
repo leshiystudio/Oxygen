@@ -742,88 +742,28 @@ public class Bot extends BotSuper {
 	}
 	//
 	public void recycle_organics_under(int org) {
-		int[] pos = {xpos, ypos};
-		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			double ox = count_oxygen();
-			if (org_map[pos[0]][pos[1]] > org) {
-				if (ox >= org * Constant.org_recycle_ox_coeff) {
-					oxygen_map[xpos][ypos] -= org * Constant.org_recycle_ox_coeff;
-					co2_map[xpos][ypos] += org * Constant.org_recycle_co2_coeff;
-					
-					if(oxygen_map[xpos][ypos] < 0) {
-						oxygen_map[xpos][ypos] = 0;
-					}
-//					if(co2_map[xpos][ypos] > 1) {
-//						co2_map[xpos][ypos] = 1;
-//					}
-
-					org *= 8;
-					energy += org;
-					org_map[pos[0]][pos[1]] -= org;
-					go_yellow();
-				}
-			}else {
-				if (ox >= org_map[pos[0]][pos[1]] * Constant.org_recycle_ox_coeff) {
-					oxygen_map[xpos][ypos] -= org_map[pos[0]][pos[1]] * Constant.org_recycle_ox_coeff;
-					co2_map[xpos][ypos] += org_map[pos[0]][pos[1]] * Constant.org_recycle_co2_coeff;
-
-					if(oxygen_map[xpos][ypos] < 0) {
-						oxygen_map[xpos][ypos] = 0;
-					}
-//					if(co2_map[xpos][ypos] > 1) {
-//						co2_map[xpos][ypos] = 1;
-//					}
-					
-					energy += org_map[pos[0]][pos[1]] * 8;
-					if (org_map[pos[0]][pos[1]] != 0) {
-						go_yellow();
-					}
-					org_map[pos[0]][pos[1]] = 0;
-				}
-			}
-		}
+		recycle_organics_at(xpos, ypos, org);
 	}
 	//
 	public void recycle_organics(int rot, int org) {
 		int[] pos = get_rotate_position(rot);
-		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			double ox = count_oxygen();
-			if (org_map[pos[0]][pos[1]] > org) {
-				if (ox >= org * Constant.org_recycle_ox_coeff) {
-					oxygen_map[xpos][ypos] -= org * Constant.org_recycle_ox_coeff;
-					co2_map[xpos][ypos] += org * Constant.org_recycle_co2_coeff;
-
-					if(oxygen_map[xpos][ypos] < 0) {
-						oxygen_map[xpos][ypos] = 0;
-					}
-//					if(co2_map[xpos][ypos] > 1) {
-//						co2_map[xpos][ypos] = 1;
-//					}
-					
-					org *= 8;
-					energy += org;
-					org_map[pos[0]][pos[1]] -= org;
-					go_yellow();
-				}
-			}else {
-				if (ox >= org_map[pos[0]][pos[1]] * Constant.org_recycle_ox_coeff) {
-					oxygen_map[xpos][ypos] -= org_map[pos[0]][pos[1]] * Constant.org_recycle_ox_coeff;
-					co2_map[xpos][ypos] += org_map[pos[0]][pos[1]] * Constant.org_recycle_co2_coeff;
-
-					if(oxygen_map[xpos][ypos] < 0) {
-						oxygen_map[xpos][ypos] = 0;
-					}
-//					if(co2_map[xpos][ypos] > 1) {
-//						co2_map[xpos][ypos] = 1;
-//					}
-
-					energy += org_map[pos[0]][pos[1]] * 8;
-					if (org_map[pos[0]][pos[1]] > 0) {
-						go_yellow();
-					}
-					org_map[pos[0]][pos[1]] = 0;
-				}
-			}
+		recycle_organics_at(pos[0], pos[1], org);
+	}
+	//
+	private void recycle_organics_at(int px, int py, int org) {//переработка органики в клетке: органика переходит в энергию 1:1
+		//раньше проверялось org, а вычиталось org*8 (органика уходила в минус),
+		//а в ветке "забрать всё" энергия начислялась x8 от изъятой органики
+		double take = Math.min(org * 8.0, org_map[px][py]);
+		if (take <= 0) {
+			return;
+		}
+		double gas = take / 8.0;//газообмен — как раньше, от объема до умножения
+		if (count_oxygen() >= gas * Constant.org_recycle_ox_coeff) {
+			oxygen_map[xpos][ypos] = Math.max(0, oxygen_map[xpos][ypos] - gas * Constant.org_recycle_ox_coeff);
+			co2_map[xpos][ypos] += gas * Constant.org_recycle_co2_coeff;
+			energy += take;
+			org_map[px][py] -= take;
+			go_yellow();
 		}
 	}
 	//
