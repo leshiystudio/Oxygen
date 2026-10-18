@@ -316,20 +316,7 @@ public class Bot extends BotSuper {
 				}else {
 					index = commands[(index + 3) % max_mind];
 				}
-			}else if (command == 16) {//есть ли фотосинтез
-				int sector = Constant.sector(ypos);
-				if (sector <= 5) {
-					index = commands[(index + 1) % max_mind];
-				}else {
-					index = commands[(index + 2) % max_mind];
-				}
-			}else if (command == 17) {//есть ли приход минералов
-				int sector = Constant.sector(ypos);
-				if (sector <= 7 && sector >= 5) {
-					index = commands[(index + 1) % max_mind];
-				}else {
-					index = commands[(index + 2) % max_mind];
-				}
+			//16, 17 — свободны (были проверки сектора по y; при замкнутом мире и отключенных секторах смысла не имели)
 			}else if (command == 18) {//поделиться относительно
 				int new_type = commands[(index + 2) % max_mind] % 8;
 				multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, false, iterator);
@@ -343,14 +330,14 @@ public class Bot extends BotSuper {
 				index %= max_mind;
 				break;
 			}else if (command == 20) {//какая моя позиция x
-				double ind = commands[(index + 1) % max_mind] / max_mind;
+				double ind = commands[(index + 1) % max_mind] / (double) Constant.mind_max_value_command;//доля 0..1; целочисленное деление давало всегда 0
 				if (xpos * 1.0 / Constant.world_scale[0] >= ind) {
 					index = commands[(index + 2) % max_mind];
 				}else {
 					index = commands[(index + 3) % max_mind];
 				}
 			}else if (command == 21) {//какая моя позиция y
-				double ind = commands[(index + 1) % max_mind] / max_mind;
+				double ind = commands[(index + 1) % max_mind] / (double) Constant.mind_max_value_command;//доля 0..1; целочисленное деление давало всегда 0
 				if (ypos * 1.0 / Constant.world_scale[1] >= ind) {
 					index = commands[(index + 2) % max_mind];
 				}else {
@@ -376,7 +363,8 @@ public class Bot extends BotSuper {
 			}else if (command == 25) {//безусловный переход
 				index = commands[(index + 1) % max_mind];
 			}else if (command == 26) {//сколько кислорода
-				int ind = commands[(index + 1) % max_mind] / Constant.mind_max_value_command; // было деление на 63;
+				//порог в диапазоне 0..ox_render_maximum_coeff: реальный кислород ~0.04, целочисленное деление давало всегда 0
+				double ind = commands[(index + 1) % max_mind] / (double) Constant.mind_max_value_command * Constant.ox_render_maximum_coeff;
 				if (oxygen_map[xpos][ypos] >= ind) {
 					index = commands[(index + 2) % max_mind];
 				}else {
@@ -401,7 +389,7 @@ public class Bot extends BotSuper {
 			}else if (command == 31 || command == 32) {//переработка органики перед собой абсолютно
 				if (pht_org_block != 1) {
 					pht_org_block = 2;
-					recycle_organics(rotate, (int)(commands[(index + 2) % max_mind] * Constant.org_recycle_coeff));
+					recycle_organics(rotate, (int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
 				}
 				index += 2;
 				index %= max_mind;
@@ -430,7 +418,7 @@ public class Bot extends BotSuper {
 				index = commands[(index + 2 + see_org(rotate, ind)) % max_mind];
 			}else if (command == 36) {//какое мое направление
 				int ind = commands[(index + 1) % max_mind] % 8;
-				if (rotate >= ind) {
+				if (rotate > ind) {
 					index = commands[(index + 2) % max_mind];
 				}else if (rotate == ind) {
 					index = commands[(index + 3) % max_mind];
@@ -444,7 +432,7 @@ public class Bot extends BotSuper {
 			}else if (command == 38) {//сколько ботов вокруг
 				int ind = commands[(index + 1) % max_mind] % 8;
 				int count = bot_count();
-				if (count >= ind) {
+				if (count > ind) {
 					index = commands[(index + 2) % max_mind];
 				}else if (count == ind) {
 					index = commands[(index + 3) % max_mind];
@@ -706,31 +694,24 @@ public class Bot extends BotSuper {
 		});
 	}
 	//
-	public int see(int rot) {
+	public int see(int rot) {//мир замкнут, границы нет
 		int[] pos = get_rotate_position(rot);
-		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (org_map[pos[0]][pos[1]] >= Constant.org_die_level) {
-				return(3);//если переизбыток органики
-			}else {
-				if (map[pos[0]][pos[1]] == null) {
-					return(1);//если ничего
-				}else if (map[pos[0]][pos[1]].state == 0) {
-					//return(2);//если бот
-					if(map[pos[0]][pos[1]].queen == 1) {
-						return(5);
-					}else if(map[pos[0]][pos[1]].queen == 2){
-						return(6);
-					}else if(count_different_genom(genom_array, map[pos[0]][pos[1]].genom_array) <= Constant.max_different_genom) {
-						return(2);
-					}else {
-						return(4);
-					}
-				}
-			}
+		Bot b = map[pos[0]][pos[1]];
+		if (org_map[pos[0]][pos[1]] >= Constant.org_die_level) {
+			return(3);//если переизбыток органики
+		}else if (b == null) {
+			return(1);//если ничего
+		}else if (b.state != 0) {
+			return(0);//если семечко
+		}else if (b.queen == 1) {
+			return(5);//королева
+		}else if (b.queen == 2) {
+			return(6);//подчиненная
+		}else if (count_different_genom(genom_array, b.genom_array) <= Constant.max_different_genom) {
+			return(2);//родственник
 		}else {
-			return(0);//если граница
+			return(4);//чужой
 		}
-		return(0);
 	}
 	//
 	public void give(int rot) {
@@ -847,7 +828,7 @@ public class Bot extends BotSuper {
 	}
 	//
 	public int see_org(int rot, int ind) {
-		int[] pos = get_rotate_position(rotate);
+		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 			if (org_map[pos[0]][pos[1]] >= ind * 15) {
 				return(0);
