@@ -1,6 +1,7 @@
 package sct;
 
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
 import java.awt.BasicStroke;
@@ -80,6 +81,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		objects = new ArrayList<Bot>();
 		setBackground(new Color(Theme.world_bg));
 		initComponent();
+		Presets.apply_seed(this);//до создания популяции: одно зерно — один и тот же мир
 
 		newPopulation();
 
@@ -307,16 +309,34 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	}
 
 	@Override
-	public void mouseClicked(MouseEvent e) {
+	public void mouseClicked(MouseEvent e) {//ЛКМ — выбрать бота, ПКМ — текущий инструмент
 		int[] c = world_cell(e);
 		lock.lock();
 		try {
-			Bot b = Map[c[0]][c[1]];//выбор бота
-			select(b != null && b.killed == 0 ? b : null);
+			Bot b = Map[c[0]][c[1]];
+			if (b != null && b.killed != 0) {
+				b = null;
+			}
+			if (SwingUtilities.isRightMouseButton(e)) {
+				Tools.all[tool_idx].apply(this, b, c[0], c[1]);
+			}else {
+				select(b);
+			}
 		}finally {
 			lock.unlock();
 		}
 		repaint();
+	}
+	//
+	//инструмент ПКМ
+	volatile int tool_idx = 0;
+	public void next_tool(int delta) {
+		tool_idx = Math.floorMod(tool_idx + delta, Tools.all.length);
+	}
+	public void reset_tool() {//Esc: инструмент «Select», выделение снято
+		tool_idx = 0;
+		selection = null;
+		prev_selection = null;
 	}
 	public void select(Bot b) {
 		if (b != selection) {
@@ -376,6 +396,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 				}
 			}
 			Ledger.reset(this);
+			History.clear();
+			KinClans.update(this);
 		}finally {
 			lock.unlock();
 		}
@@ -437,6 +459,10 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			selection = null;
 		}
 		Ledger.end_step(this);
+		if (steps % KinClans.update_every == 0) {
+			KinClans.update(this);
+		}
+		History.record(this, ms_per_step);
 	}
 
 }

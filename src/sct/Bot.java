@@ -46,6 +46,8 @@ public class Bot extends BotSuper {
 	public Bot queen_bot;
 	public int queen_command = -1;// команда от королевы
 	public int queen_marker = 0;
+	public int kin_color = 0x808080;//цвет клана по геному (KinClans), режим отрисовки 8
+	public int kin_id = -1;
 	//
 	private double[][] oxygen_map;
 	private double[][] co2_map;
@@ -912,6 +914,75 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
+	//СОХРАНЕНИЕ (WorldIO)
+	//
+	int load_queen_ref = -1;//номер королевы в файле, связывается после чтения всех ботов
+	public void save(java.io.DataOutputStream out, java.util.Map<Bot, Integer> ids) throws java.io.IOException {
+		out.writeInt(xpos);
+		out.writeInt(ypos);
+		out.writeInt(color.getRGB());
+		out.writeInt(clan_color.getRGB());
+		out.writeDouble(energy);
+		out.writeDouble(age);
+		out.writeInt(memory);
+		out.writeInt(type);
+		for (int[] g : genom_array) {
+			for (int v : g) {
+				out.writeInt(v);
+			}
+		}
+		out.writeInt(genom_current_idx);
+		out.writeInt(index);
+		out.writeInt(rotate);
+		for (boolean c : chain) {
+			out.writeBoolean(c);
+		}
+		out.writeInt(c_red);
+		out.writeInt(c_green);
+		out.writeInt(c_blue);
+		out.writeInt(state);
+		out.writeInt(pht_org_block);
+		out.writeInt(seed_time);
+		out.writeInt(queen);
+		Integer q = queen_bot == null ? null : ids.get(queen_bot);
+		out.writeInt(q == null ? -1 : q);
+		out.writeInt(queen_command);
+		out.writeInt(queen_marker);
+	}
+	public static Bot load(java.io.DataInputStream in, double[][] oxygen_map, double[][] co2_map, double[][] org_map, Bot[][] map, ArrayList<Bot> objects) throws java.io.IOException {
+		int bx = in.readInt();
+		int by = in.readInt();
+		Color c = new Color(in.readInt());
+		Bot b = new Bot(bx, by, c, 0, 0, oxygen_map, co2_map, org_map, map, objects);
+		b.clan_color = new Color(in.readInt());
+		b.energy = in.readDouble();
+		b.age = in.readDouble();
+		b.memory = in.readInt();
+		b.type = in.readInt();
+		for (int[] g : b.genom_array) {
+			for (int i = 0; i < g.length; i++) {
+				g[i] = in.readInt();
+			}
+		}
+		b.set_current_genom(in.readInt());
+		b.index = in.readInt();
+		b.rotate = in.readInt();
+		for (int i = 0; i < 8; i++) {
+			b.chain[i] = in.readBoolean();
+		}
+		b.c_red = in.readInt();
+		b.c_green = in.readInt();
+		b.c_blue = in.readInt();
+		b.state = in.readInt();
+		b.pht_org_block = in.readInt();
+		b.seed_time = in.readInt();
+		b.queen = in.readInt();
+		b.load_queen_ref = in.readInt();
+		b.queen_command = in.readInt();
+		b.queen_marker = in.readInt();
+		return b;
+	}
+	//
 	//ТЕХНИЧЕСКИЕ ФУНКЦИИ
 	//
 	public double count_oxygen() {
@@ -1099,6 +1170,8 @@ public class Bot extends BotSuper {
 				}else {
 					c = new Color(255, 0, 255);
 				}
+			}else if(draw_type == 8) {// кланы по геному
+				c = new Color(kin_color);
 			}else if(draw_type == 7) {// королевы
 				if(queen == 0) {
 					c = new Color(100, 255, 100);
