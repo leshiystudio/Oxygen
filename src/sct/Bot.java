@@ -78,7 +78,7 @@ public class Bot extends BotSuper {
 	}
 	public void set_current_genom(int idx) {
 		genom_current_idx = idx % Constant.mind_count;
-		commands = genom_array[genom_current_idx].clone();
+		commands = genom_array[genom_current_idx];//ссылка на свою строку генома: геном у каждого бота свой (см. multiply)
 	}
 	public void Draw(Graphics2D canvas, int draw_type, int zoom, int[] pos) {
 		if (zoom == 0) {//зум x1
@@ -895,7 +895,7 @@ public class Bot extends BotSuper {
 	public int count_different_genom(int[][] gen1, int[][] gen2) {
 		int diff_count = 0;
 		for (int i = 0; i < gen1.length; i++) {
-			for(int j = 0; j < gen1.length; j++) {
+			for(int j = 0; j < gen1[i].length; j++) {
 				if(gen1[i][j] != gen2[i][j]) {
 					diff_count++;
 				}				
@@ -929,8 +929,12 @@ public class Bot extends BotSuper {
 					}else {
 						new_color = new Color(Constant.border(color.getRed() + rand.nextInt(-12, 13), 255, 0), Constant.border(color.getGreen() + rand.nextInt(-12, 13), 255, 0), Constant.border(color.getBlue() + rand.nextInt(-12, 13), 255, 0));
 					}
-					int[][] new_brain = new int[Constant.mind_count][max_mind];
-					new_brain = genom_array.clone();
+					//глубокая копия: clone() двумерного массива копирует только внешний массив,
+					//строки оставались общими и мутация потомка меняла геном родителя и всего клана
+					int[][] new_brain = new int[Constant.mind_count][];
+					for (int i = 0; i < Constant.mind_count; i++) {
+						new_brain[i] = genom_array[i].clone();
+					}
 //					int[] new_brain = new int[64];
 //					for (int i = 0; i < 64; i++) {
 //						new_brain[i] = commands[i];
@@ -957,7 +961,7 @@ public class Bot extends BotSuper {
 					energy /= 2;
 //					new_bot.commands = new_brain;
 					new_bot.genom_array = new_brain;
-					new_bot.commands = new_brain[genom_current_idx].clone();
+					new_bot.set_current_genom(genom_current_idx);//потомок продолжает с того же генома, что и родитель
 					if(queen > 0) {
 						//new_bot.queen = queen;
 						//new_bot.queen_bot = queen_bot;

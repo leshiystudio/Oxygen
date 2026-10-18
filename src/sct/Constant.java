@@ -42,7 +42,7 @@ public class Constant {
 	public static int energy_for_multiply = 50;
 	public static int energy_for_auto_multiply = 800;
 	public static int max_age = 1500;
-	public static int max_different_genom = 3;
+	public static int max_different_genom = 10; //3; порог "свой/чужой" по всем генам всех геномов (сейчас 2*64)
 	public static int mutate_chance_percent = 10;
 	//
 	public static int queen_max_radius = 8;
