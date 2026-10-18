@@ -450,7 +450,7 @@ public class World extends JPanel{
 			ListIterator<Bot> bot_iterator = objects.listIterator();
 			while (bot_iterator.hasNext()) {
 				Bot next_bot = bot_iterator.next();
-				next_bot.Update(bot_iterator);
+				next_bot.Update((ListIterator) bot_iterator);//старый мир: Update теперь принимает ListIterator<IBot>
 				if (selection != null) {
 					if (next_bot.xpos == selection.xpos && next_bot.ypos == selection.ypos) {
 						if (next_bot != selection) {

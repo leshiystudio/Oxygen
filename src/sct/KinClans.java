@@ -48,8 +48,8 @@ public class KinClans {
 		//1. одинаковые геномы
 		HashMap<Long, ArrayList<Group>> by_hash = new HashMap<Long, ArrayList<Group>>();
 		ArrayList<Group> groups = new ArrayList<Group>();
-		for (Bot b : w.objects) {
-			if (b.killed != 0) {
+		for (IBot o : w.objects) {
+			if (!o.alive() || !(o instanceof Bot b)) {//кланы по геному — пока для ботов Oxygen
 				continue;
 			}
 			long h = hash(b.genom_array);

@@ -12,14 +12,12 @@ import java.util.ListIterator;
 import java.util.function.Predicate;
 
 public class Bot extends BotSuper {
-	ArrayList<Bot> objects;
+	java.util.List<? extends IBot> objects;//список мира; боту нужен только чтобы передать потомкам
 	static Random rand = new Random();//один на всех ботов: раньше создавался у каждого; зерно задается в Main
-	public Bot[][] map;
+	public IBot[][] map;//общая сетка мира: в клетке любое существо
 	//
 	private int x;//позиция
 	private int y;
-	public int xpos;
-	public int ypos;
 	//
 	public Color color;//основные параметры
 	public Color clan_color = new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
@@ -41,7 +39,6 @@ public class Bot extends BotSuper {
 	public int state = 0;//тип бота
 	public int pht_org_block = 0;//специализация: 1 - фотосинтез, 2 - переработка органики
 	public int seed_time;//сколько лететь(если семечко)
-	public int killed = 0;//убит ли бот
 	public int queen = 0;//0-обычная особь, 1-королева, 2-подчиненная
 	public Bot queen_bot;
 	public int queen_command = -1;// команда от королевы
@@ -52,7 +49,7 @@ public class Bot extends BotSuper {
 	private double[][] oxygen_map;
 	private double[][] co2_map;
 	private double[][] org_map;
-	public Bot(int new_xpos, int new_ypos, Color new_color, double new_energy, int new_type, double[][] new_oxygen_map, double[][] new_co2_map, double[][] new_org_map, Bot[][] new_map, ArrayList<Bot> new_objects) {
+	public Bot(int new_xpos, int new_ypos, Color new_color, double new_energy, int new_type, double[][] new_oxygen_map, double[][] new_co2_map, double[][] new_org_map, IBot[][] new_map, java.util.List<? extends IBot> new_objects) {
 		xpos = new_xpos;
 		ypos = new_ypos;
 		x = new_xpos * Constant.size;
@@ -139,7 +136,7 @@ public class Bot extends BotSuper {
 			}
 		}
 	}
-	public int Update(ListIterator<Bot> iterator) {
+	public int Update(ListIterator<IBot> iterator) {
 		if (killed == 0) {
 			if (state == 0) {//если бот
 				if(queen == 0) {
@@ -204,9 +201,10 @@ public class Bot extends BotSuper {
 				if (res == 0) {//столкновение
 					int[] pos = get_rotate_position(rotate);
 					if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-						if (map[pos[0]][pos[1]] != null) {
+						IBot hit = occupant(pos);
+						if (hit != null) {
 							die_with_organics(Ledger.DIE_COLLISION);//убить семечко
-							map[pos[0]][pos[1]].die_with_organics(Ledger.DIE_COLLISION);//убить бота
+							hit.die(Ledger.DIE_COLLISION);//убить того, в кого попало
 							return(0);
 						}
 					}
@@ -221,7 +219,7 @@ public class Bot extends BotSuper {
 		}
 		return(0);
 	}
-	public void update_commands(ListIterator<Bot> iterator) {//мозг
+	public void update_commands(ListIterator<IBot> iterator) {//мозг
 		int max_mind = Constant.mind_size;
 		int max_genom = Constant.mind_count;
 		for (int i = 0; i < 5; i++) {
@@ -596,9 +594,10 @@ public class Bot extends BotSuper {
 	public void add_neighbour_to_chain(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
+			Bot n = bot_at(pos);
+			if (n != null && n.state == 0) {
 				chain[rot] = true;
-				map[pos[0]][pos[1]].chain[(rot + 4) % 8] = true;
+				n.chain[(rot + 4) % 8] = true;
 			}
 		}
 	}
@@ -606,8 +605,8 @@ public class Bot extends BotSuper {
 	public int move(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] == null) {
-				Bot self = map[xpos][ypos];
+			if (occupant(pos) == null) {
+				IBot self = map[xpos][ypos];
 				map[xpos][ypos] = null;
 				xpos = pos[0];
 				ypos = pos[1];
@@ -625,8 +624,8 @@ public class Bot extends BotSuper {
 	public void attack(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null) {
-				Bot victim = map[pos[0]][pos[1]];
+			if (occupant(pos) != null) {
+				Bot victim = bot_at(pos);//другие виды — этап 4 (таблица взаимодействий)
 				if (victim != null) {
 					energy += victim.energy;
 					victim.energy = 0;//энергию забрал хищник: в органику уходит только тело
@@ -657,7 +656,7 @@ public class Bot extends BotSuper {
 			}
 			for (int i = 0; i < 8; i++) {
 				int[] pos = b.get_rotate_position(i);
-				Bot n = map[pos[0]][pos[1]];
+				Bot n = b.bot_at(pos);
 				if (n == null || n.state != 0 || n.killed != 0 || dist.containsKey(n)) {
 					continue;
 				}
@@ -736,9 +735,12 @@ public class Bot extends BotSuper {
 	//
 	public int see(int rot) {//мир замкнут, границы нет
 		int[] pos = get_rotate_position(rot);
-		Bot b = map[pos[0]][pos[1]];
+		IBot o = occupant(pos);
+		Bot b = bot_at(pos);
 		if (org_map[pos[0]][pos[1]] >= Constant.org_die_level) {
 			return(3);//если переизбыток органики
+		}else if (o != null && b == null) {
+			return(o.species().see_code);//существо другого вида: свой код (7 — растение, 8 — нейро-бот)
 		}else if (b == null) {
 			return(1);//если ничего
 		}else if (b.state != 0) {
@@ -757,8 +759,8 @@ public class Bot extends BotSuper {
 	public void give(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-				Bot relative = map[pos[0]][pos[1]];
+			Bot relative = bot_at(pos);
+			if (relative != null && relative.state == 0) {
 				if (relative.killed == 0) {
 					relative.energy += energy / 4;
 					energy -= energy / 4;
@@ -770,8 +772,8 @@ public class Bot extends BotSuper {
 	public void unif_distrib(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-				Bot relative = map[pos[0]][pos[1]];
+			Bot relative = bot_at(pos);
+			if (relative != null && relative.state == 0) {
 				if (relative.killed == 0) {
 					double enr = relative.energy + energy;
 					relative.energy = enr / 2;
@@ -842,11 +844,11 @@ public class Bot extends BotSuper {
 		return diff_count;
 	}
 	//
-	public void multiply(int rot, int seed, int time, int new_type, boolean ch, ListIterator<Bot> iterator) {
+	public void multiply(int rot, int seed, int time, int new_type, boolean ch, ListIterator<IBot> iterator) {
 		int max_mind = Constant.mind_size;
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] == null) {
+			if (occupant(pos) == null) {
 				energy -= Constant.energy_for_multiply;
 				if (energy <= 0) {
 					Ledger.out_birth_fail += Constant.energy_for_multiply;//потомок не родился, цена деления потеряна
@@ -914,6 +916,46 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
+	//СЕТКА И КОНТРАКТ IBot
+	//
+	public IBot occupant(int[] pos) {//любое существо в клетке
+		return map[pos[0]][pos[1]];
+	}
+	public Bot bot_at(int[] pos) {//бот в клетке (Oxygen или нейро), иначе null
+		IBot o = map[pos[0]][pos[1]];
+		return o instanceof Bot ? (Bot) o : null;
+	}
+	public Species species() {
+		return Species.OXYGEN_BOT;
+	}
+	public boolean crowds() {//семечко соседом не считается — как было в bot_count
+		return state == 0;
+	}
+	public double ledger_energy() {//энергия и тело (energy_for_multiply), см. Ledger
+		return killed == 0 ? energy + Constant.energy_for_multiply : 0;
+	}
+	public double energy_value() {
+		return energy;
+	}
+	public void eaten_by(IBot eater, double efficiency) {//энергию забирает съевший, в органику уходит тело
+		energy = 0;
+		die_with_organics(Ledger.DIE_EATEN);
+	}
+	public void die(int cause) {
+		die_with_organics(cause);
+	}
+	public boolean same_kin(IBot other) {
+		return other instanceof Bot && other.species() == species()
+			&& count_different_genom(genom_array, ((Bot) other).genom_array) <= Constant.max_different_genom;
+	}
+	public int color(int draw_type) {
+		return get_color(draw_type).getRGB() & 0xFFFFFF;
+	}
+	public String describe() {
+		return String.format("%s [%d, %d] energy %.1f, age %.1f, type %d, queen %d, chains %d, genom %d, index %d",
+			species().title, xpos, ypos, energy, age, type, queen, count_chains(), genom_current_idx, index);
+	}
+	//
 	//СОХРАНЕНИЕ (WorldIO)
 	//
 	int load_queen_ref = -1;//номер королевы в файле, связывается после чтения всех ботов
@@ -949,7 +991,7 @@ public class Bot extends BotSuper {
 		out.writeInt(queen_command);
 		out.writeInt(queen_marker);
 	}
-	public static Bot load(java.io.DataInputStream in, double[][] oxygen_map, double[][] co2_map, double[][] org_map, Bot[][] map, ArrayList<Bot> objects) throws java.io.IOException {
+	public static Bot load(java.io.DataInputStream in, double[][] oxygen_map, double[][] co2_map, double[][] org_map, IBot[][] map, java.util.List<? extends IBot> objects) throws java.io.IOException {
 		int bx = in.readInt();
 		int by = in.readInt();
 		Color c = new Color(in.readInt());
@@ -1034,7 +1076,8 @@ public class Bot extends BotSuper {
 		for (int i = 0; i < 8; i++) {
 			int[] pos = get_rotate_position(i);
 			if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-				if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
+				IBot o = occupant(pos);
+				if (o != null && o.crowds()) {
 					count++;
 				}
 			}
@@ -1048,7 +1091,8 @@ public class Bot extends BotSuper {
 			for (int d = 1; d <= 3; d++) { //дистанция 
 				int[] pos = get_rotate_position(i,d);
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
+					IBot o = occupant(pos);
+					if (o != null && o.crowds()) {
 						count++;
 					}
 				}
@@ -1251,8 +1295,9 @@ public class Bot extends BotSuper {
 			if (chain[i]) {
 				int[] pos = get_rotate_position(i);
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						energy_sum += map[pos[0]][pos[1]].energy;
+					Bot n = bot_at(pos);
+					if (n != null && n.state == 0) {
+						energy_sum += n.energy;
 						c++;
 					}else {
 						chain[i] = false;
@@ -1267,7 +1312,7 @@ public class Bot extends BotSuper {
 				if (chain[i]) {
 					int[] pos = get_rotate_position(i);
 					if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-						map[pos[0]][pos[1]].energy = enr;
+						bot_at(pos).energy = enr;
 					}
 				}
 			}
@@ -1279,8 +1324,9 @@ public class Bot extends BotSuper {
 			if (chain[g]) {
 				int[] pos = get_rotate_position(g);
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						map[pos[0]][pos[1]].chain[(g + 4) % 8] = false;
+					Bot n = bot_at(pos);
+					if (n != null && n.state == 0) {
+						n.chain[(g + 4) % 8] = false;
 					}
 				}
 			}

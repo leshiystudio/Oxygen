@@ -48,8 +48,8 @@ public class History {
 		}
 		int bots = 0, seeds = 0, queens = 0, subs = 0;
 		double energy = 0;
-		for (Bot b : w.objects) {
-			if (b.killed != 0) {
+		for (IBot o : w.objects) {
+			if (!o.alive() || !(o instanceof Bot b)) {
 				continue;
 			}
 			if (b.state == 0) {

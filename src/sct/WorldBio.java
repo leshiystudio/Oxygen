@@ -28,8 +28,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	 *
 	 */
 	private static final long serialVersionUID = 1L;
-	ArrayList<Bot> objects;
-	Bot[][] Map = new Bot[Constant.world_scale[0]][Constant.world_scale[1]];
+	ArrayList<IBot> objects;//все существа мира
+	IBot[][] Map = new IBot[Constant.world_scale[0]][Constant.world_scale[1]];//общая сетка: в клетке любое существо
 	Random rand = new Random();
 	Timer timer;//перерисовка окна (~30 кадров/с); сама симуляция идет в sim_thread
 	double[][] oxygen_map;//кислород
@@ -78,7 +78,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	}
 	public WorldBio(boolean start_threads) {//false — мир без окна и потоков (замеры, тесты)
 		setLayout(null);
-		objects = new ArrayList<Bot>();
+		objects = new ArrayList<IBot>();
 		setBackground(new Color(Theme.world_bg));
 		initComponent();
 		Presets.apply_seed(this);//до создания популяции: одно зерно — один и тот же мир
@@ -313,10 +313,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		int[] c = world_cell(e);
 		lock.lock();
 		try {
-			Bot b = Map[c[0]][c[1]];
-			if (b != null && b.killed != 0) {
-				b = null;
-			}
+			IBot o = Map[c[0]][c[1]];
+			Bot b = o instanceof Bot && o.alive() ? (Bot) o : null;//выбор и инструменты — пока только для ботов (этап 4)
 			if (SwingUtilities.isRightMouseButton(e)) {
 				Tools.all[tool_idx].apply(this, b, c[0], c[1]);
 			}else {
@@ -408,9 +406,9 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		population++;
 		selection = null;
 		prev_selection = null;
-		objects = new ArrayList<Bot>();
+		objects = new ArrayList<IBot>();
 		SimplexNoise noise = new SimplexNoise(rand.nextInt(-1000000000, 1000000000));//шум
-		Map = new Bot[Constant.world_scale[0]][Constant.world_scale[1]];
+		Map = new IBot[Constant.world_scale[0]][Constant.world_scale[1]];
 		oxygen_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
 		co2_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
 		org_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
@@ -438,12 +436,12 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		obj_count = 0;
 		org_count = 0;
 		//
-		ListIterator<Bot> bot_iterator = objects.listIterator();
+		ListIterator<IBot> bot_iterator = objects.listIterator();
 		while (bot_iterator.hasNext()) {
-			Bot next_bot = bot_iterator.next();
+			IBot next_bot = bot_iterator.next();
 			next_bot.Update(bot_iterator);
 			obj_count++;
-			if (next_bot.state != 0) {
+			if (next_bot instanceof Bot && ((Bot) next_bot).state != 0) {
 				org_count++;
 			}else {
 				b_count++;
@@ -454,7 +452,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		WorldUtils.gas(co2_map, org_map);
 		WorldUtils.minerals(mnr_map);
 		//
-		objects.removeIf(b -> b.killed == 1);//один проход вместо удаления по одному из середины списка
+		objects.removeIf(b -> !b.alive());//один проход вместо удаления по одному из середины списка
 		if (selection != null && selection.killed == 1) {
 			selection = null;
 		}

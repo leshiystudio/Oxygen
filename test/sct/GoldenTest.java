@@ -57,7 +57,8 @@ public class GoldenTest {
 		Hash h = new Hash();
 		h.add(w.steps);
 		h.add(w.objects.size());
-		for (Bot b : w.objects) {
+		for (IBot o : w.objects) {
+			Bot b = (Bot) o;//эталон — мир из одних ботов Oxygen
 			h.add(b.xpos);
 			h.add(b.ypos);
 			h.add(b.killed);

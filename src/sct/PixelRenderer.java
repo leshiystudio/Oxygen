@@ -33,13 +33,13 @@ public class PixelRenderer {
 			draw_bots(w, s);
 			Graphics2D g = tile.createGraphics();
 			if (w.draw_type == 7) {//связи королев с подчиненными и сами королевы поверх
-				for (Bot b : w.objects) {
-					if (b.queen == 1 && b.killed == 0) {
+				for (IBot o : w.objects) {
+					if (o instanceof Bot b && b.queen == 1 && b.killed == 0) {
 						b.queen_draw(g);
 					}
 				}
-				for (Bot b : w.objects) {
-					if (b.queen == 1 && b.killed == 0) {
+				for (IBot o : w.objects) {
+					if (o instanceof Bot b && b.queen == 1 && b.killed == 0) {
 						b.queen_mark(g);
 					}
 				}
@@ -105,8 +105,12 @@ public class PixelRenderer {
 	private void draw_bots(WorldBio w, int s) {
 		int dt = w.draw_type;
 		int half = s / 2;
-		for (Bot b : w.objects) {
-			if (b.killed != 0) {
+		for (IBot o : w.objects) {
+			if (!o.alive()) {
+				continue;
+			}
+			if (!(o instanceof Bot b)) {//другие виды — клеткой своего цвета
+				fill_cell(o.cell_x(), o.cell_y(), s, o.color(dt));
 				continue;
 			}
 			int c = b.get_color(dt).getRGB() & 0xFFFFFF;

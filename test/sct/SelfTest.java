@@ -44,8 +44,8 @@ public class SelfTest {
 	//пустой мир с одной органикой, без ботов — для точечных сценариев
 	private static WorldBio empty_world() {
 		WorldBio w = new WorldBio(false);
-		for (Bot b : w.objects) {
-			w.Map[b.xpos][b.ypos] = null;
+		for (IBot o : w.objects) {
+			w.Map[o.cell_x()][o.cell_y()] = null;
 		}
 		w.objects.clear();
 		return w;
@@ -57,14 +57,14 @@ public class SelfTest {
 		return b;
 	}
 	private static Bot multiply(WorldBio w, Bot parent, int rot, boolean chain) {
-		ListIterator<Bot> it = w.objects.listIterator(w.objects.indexOf(parent) + 1);
+		ListIterator<IBot> it = w.objects.listIterator(w.objects.indexOf(parent) + 1);
 		int before = w.objects.size();
 		parent.multiply(rot, 0, 0, 0, chain, it);
 		if (w.objects.size() == before) {
 			return null;
 		}
 		int[] p = parent.get_rotate_position(rot);
-		return w.Map[p[0]][p[1]];
+		return (Bot) w.Map[p[0]][p[1]];
 	}
 	//
 	private static void genome_is_independent() {
@@ -171,8 +171,8 @@ public class SelfTest {
 	//
 	private static long state_hash(WorldBio w) {
 		long h = w.steps;
-		for (Bot b : w.objects) {
-			if (b.killed == 0) {
+		for (IBot o : w.objects) {
+			if (o instanceof Bot b && b.killed == 0) {
 				h = h * 31 + b.xpos * 1000 + b.ypos;
 				h = h * 31 + Double.doubleToLongBits(b.energy);
 			}

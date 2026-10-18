@@ -64,10 +64,8 @@ public class Ledger {
 	//
 	public static double measure(WorldBio w) {//фактическая полная энергия мира
 		double sum = 0;
-		for (Bot b : w.objects) {
-			if (b.killed == 0) {
-				sum += b.energy + Constant.energy_for_multiply;
-			}
+		for (IBot o : w.objects) {//у каждого вида свой учет: у бота — энергия и тело
+			sum += o.ledger_energy();
 		}
 		for (double[] row : w.org_map) {
 			for (double v : row) {

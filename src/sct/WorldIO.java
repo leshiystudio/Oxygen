@@ -51,8 +51,8 @@ public class WorldIO {
 			}
 			IdentityHashMap<Bot, Integer> ids = new IdentityHashMap<Bot, Integer>();
 			ArrayList<Bot> alive = new ArrayList<Bot>();
-			for (Bot b : w.objects) {
-				if (b.killed == 0) {
+			for (IBot o : w.objects) {//формат версии 1 хранит ботов Oxygen; разделы других видов — версия 2 (этап 4)
+				if (o instanceof Bot b && b.killed == 0) {
 					ids.put(b, alive.size());
 					alive.add(b);
 				}
@@ -91,8 +91,8 @@ public class WorldIO {
 					height[x][y] = in.readInt();
 				}
 			}
-			Bot[][] map = new Bot[ww][wh];
-			ArrayList<Bot> objects = new ArrayList<Bot>();
+			IBot[][] map = new IBot[ww][wh];
+			ArrayList<IBot> objects = new ArrayList<IBot>();
 			int n = in.readInt();
 			int[] queen_refs = new int[n];
 			for (int i = 0; i < n; i++) {
@@ -102,7 +102,7 @@ public class WorldIO {
 				map[b.xpos][b.ypos] = b;
 			}
 			for (int i = 0; i < n; i++) {
-				objects.get(i).queen_bot = queen_refs[i] >= 0 ? objects.get(queen_refs[i]) : null;
+				((Bot) objects.get(i)).queen_bot = queen_refs[i] >= 0 ? (Bot) objects.get(queen_refs[i]) : null;
 			}
 			//замена мира целиком — под блокировкой, симуляция в это время стоит
 			w.lock.lock();
