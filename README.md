@@ -67,5 +67,6 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 ```bash
 javac -encoding UTF-8 -d out src/sct/*.java test/sct/*.java
 java -Djava.awt.headless=true -cp out sct.SelfTest                       # самопроверка, код выхода 0 — всё прошло
+java -Djava.awt.headless=true -cp out sct.GoldenTest                     # эталон: правила ботов Oxygen не изменились
 java -Djava.awt.headless=true -cp out sct.Bench --steps 1000 --seed 1 --csv metrics.csv
 ```

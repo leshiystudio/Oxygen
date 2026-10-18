@@ -1,6 +1,6 @@
 # План: общий мир для трёх видов
 
-Ветка: `feature/multispecies`. Статус: этап 0 (эталонный тест).
+Ветка: `feature/multispecies`. Статус: этап 0 готов (`test/sct/GoldenTest.java`), дальше этап 1.
 
 ## Цель
 
