@@ -369,6 +369,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	public void newPopulation() {//создать случайную популяцию
 		lock.lock();
 		try {
+			BotAction.configure(Constant.bot_actions_off);//галочки действий (этап 4 — у каждой популяции свои)
+			Brain<Bot> brain = Brains.bot_brain(Constant.bot_brain);
 			kill_all();
 			for (int i = 0; i < Constant.starting_bot_count; i++) {
 				while(true){
@@ -387,6 +389,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 							Map,
 							objects
 						);
+						new_bot.brain = brain;
 						objects.add(new_bot);
 						Map[x][y] = new_bot;
 						break;

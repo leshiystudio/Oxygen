@@ -47,6 +47,9 @@ public class Constant {
 	//
 	public static int queen_max_radius = 8;
 	//
+	public static String bot_actions_off = "";//выключенные действия бота через запятую (BotAction), например "attack,seed"
+	public static String bot_brain = "genome";//мозг ботов (Brains): genome — геном команд
+	//
 	public static double pht_coeff = 110; //400;
 	public static int[] pht_energy_list = {12, 11, 10, 9, 8, 7, 6, 5};
 	public static double pht_neighbours_coeff = 0.1111*2;

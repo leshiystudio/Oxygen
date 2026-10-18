@@ -25,6 +25,8 @@ public class SelfTest {
 		energy_balance_holds();
 		save_load_continues_same_world();
 		presets_set_field();
+		disabled_action_does_nothing();
+		own_brain_runs();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -205,6 +207,52 @@ public class SelfTest {
 			w.step();
 		}
 		check("loaded world continues the same way", state_hash(w) == continued);
+		Presets.seed = -1;
+	}
+	//
+	private static void disabled_action_does_nothing() {
+		System.out.println("actions:");
+		Presets.seed = 3;
+		Constant.bot_actions_off = "attack";
+		WorldBio w = new WorldBio(false);
+		int eaten = 0;
+		for (int i = 0; i < 300; i++) {
+			w.step();
+			eaten += Ledger.deaths[Ledger.DIE_EATEN];
+		}
+		check("genome cannot attack when attack is off", eaten == 0);
+		Bot b = null;
+		for (IBot o : w.objects) {
+			if (o instanceof Bot bb && bb.state == 0) {
+				b = bb;
+				break;
+			}
+		}
+		check("run() of a disabled action returns false", b != null && !BotAction.ATTACK.run(b, null, BotAction.FORWARD));
+		Constant.bot_actions_off = "";
+		BotAction.configure("");
+		boolean thrown = false;
+		try {
+			BotAction.configure("atack");
+		}catch (IllegalArgumentException e) {
+			thrown = true;
+		}
+		check("typo in action name is an error", thrown);
+		BotAction.configure("");
+		Presets.seed = -1;
+	}
+	//
+	private static void own_brain_runs() {
+		System.out.println("own brain:");
+		Presets.seed = 4;
+		Constant.bot_brain = "simple";
+		WorldBio w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("world of 'simple' brains lives (" + w.b_count + " bots)", w.b_count > 0);
+		check("energy balance holds with own brain", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Constant.bot_brain = "genome";
 		Presets.seed = -1;
 	}
 	//

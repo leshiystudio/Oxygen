@@ -43,6 +43,7 @@ public class Bot extends BotSuper {
 	public Bot queen_bot;
 	public int queen_command = -1;// команда от королевы
 	public int queen_marker = 0;
+	public Brain<Bot> brain = null;//null — геном (update_commands); иначе свой алгоритм (Brains)
 	public int kin_color = 0x808080;//цвет клана по геному (KinClans), режим отрисовки 8
 	public int kin_id = -1;
 	//
@@ -219,7 +220,11 @@ public class Bot extends BotSuper {
 		}
 		return(0);
 	}
-	public void update_commands(ListIterator<IBot> iterator) {//мозг
+	public void update_commands(ListIterator<IBot> iterator) {//мозг: геном или свой алгоритм (brain)
+		if (brain != null) {
+			brain.think(this, iterator);
+			return;
+		}
 		int max_mind = Constant.mind_size;
 		int max_genom = Constant.mind_count;
 		for (int i = 0; i < 5; i++) {
@@ -232,74 +237,48 @@ public class Bot extends BotSuper {
 				queen_command = -1;
 			}
 			if (command == 0) {//повернуться
-				rotate += commands[(index + 1) % max_mind] % 8;
-				rotate %= 8;
+				if (on(BotAction.TURN)) {
+					turn(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 			}else if (command == 1) {//сменить направление
-				rotate = commands[(index + 1) % max_mind] % 8;
+				if (on(BotAction.SET_DIR)) {
+					set_dir(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 			}else if (command == 2 || command == 3 || command == 4) {//фотосинтез
-				int sector = Constant.sector(ypos);
-				//if (sector <= 7 && pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
-				if (pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
-					pht_org_block = 1;
-					double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
-					energy += pe;
-					Ledger.in_sun += pe;
-					go_green();
-					oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
-//					if (oxygen_map[xpos][ypos] > 1) {
-//						oxygen_map[xpos][ypos] = 1;
-//					}
-					co2_map[xpos][ypos] -= Constant.pht_co2_coeff;
-					if (co2_map[xpos][ypos] < 0) {
-						co2_map[xpos][ypos] = 0;
-					}
+				if (on(BotAction.PHOTO)) {
+					photosynthesis();
 				}
 				index += 1;
 				index %= max_mind;
 				break;
 			}else if (command == 5) {//походить относительно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.move_ox_coeff * count && count_chains() == 0) {
-					oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
-					int sens = move(commands[(index + 1) % max_mind] % 8);
-					if (sens == 1) {
-						energy -= Constant.energy_for_move;
-						Ledger.out_move += Constant.energy_for_move;
-					}
+				if (on(BotAction.MOVE)) {
+					move_cmd(commands[(index + 1) % max_mind] % 8);
 				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if(command == 6) {//походить абсолютно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.move_ox_coeff * count && count_chains() == 0) {
-					oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
-					if(move(rotate) > 0) {
-						energy -= Constant.energy_for_move;
-						Ledger.out_move += Constant.energy_for_move;
-					}
+				if (on(BotAction.MOVE)) {
+					move_cmd(rotate);
 				}
 				index += 1;
 				index %= max_mind;
 				break;
 			}else if (command == 7) {//атаковать относительно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.attack_ox_coeff * count) {
-					oxygen_map[xpos][ypos] -= Constant.attack_ox_coeff * count;
-					attack(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.ATTACK)) {
+					attack_cmd(commands[(index + 1) % max_mind] % 8);
 				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 8) {//атаковать абсолютно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.attack_ox_coeff * count) {
-					oxygen_map[xpos][ypos] -= Constant.attack_ox_coeff * count;
-					attack(rotate);
+				if (on(BotAction.ATTACK)) {
+					attack_cmd(rotate);
 				}
 				index += 1;
 				index %= max_mind;
@@ -310,12 +289,16 @@ public class Bot extends BotSuper {
 			}else if (command == 10) {//посмотреть абсолютно
 				index = commands[(index + 1 + see(rotate)) % max_mind];
 			}else if (command == 11 | command == 12) {//отдать ресурсы относительно
-				give(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.GIVE)) {
+					give(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 13 | command == 14) {//отдать ресурсы абсолютно
-				give(rotate);
+				if (on(BotAction.GIVE)) {
+					give(rotate);
+				}
 				index += 1;
 				index %= max_mind;
 				break;
@@ -329,13 +312,17 @@ public class Bot extends BotSuper {
 			//16, 17 — свободны (были проверки сектора по y; при замкнутом мире и отключенных секторах смысла не имели)
 			}else if (command == 18) {//поделиться относительно
 				int new_type = commands[(index + 2) % max_mind] % 8;
-				multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, false, iterator);
+				if (on(BotAction.DIVIDE)) {
+					multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, false, iterator);
+				}
 				index += 3;
 				index %= max_mind;
 				break;
 			}else if (command == 19) {//поделиться абсолютно
 				int new_type = commands[(index + 1) % max_mind] % 8;
-				multiply(rotate, 0, 0, new_type, false, iterator);
+				if (on(BotAction.DIVIDE)) {
+					multiply(rotate, 0, 0, new_type, false, iterator);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
@@ -361,12 +348,16 @@ public class Bot extends BotSuper {
 					index = commands[(index + 3) % max_mind];
 				}
 			}else if (command == 23) {//равномерное распределение ресурсов относительно
-				unif_distrib(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.SHARE)) {
+					unif_distrib(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 24) {//равномерное распределение ресурсов абсолютно
-				unif_distrib(rotate);
+				if (on(BotAction.SHARE)) {
+					unif_distrib(rotate);
+				}
 				index += 1;
 				index %= max_mind;
 				break;
@@ -381,25 +372,22 @@ public class Bot extends BotSuper {
 					index = commands[(index + 3) % max_mind];
 				}
 			}else if (command == 27 || command == 28) {//переработка органики под собой
-				if (pht_org_block != 1) {
-					pht_org_block = 2;
-					recycle_organics_under((int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
+				if (on(BotAction.RECYCLE)) {
+					recycle_cmd(-1, (int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
 				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 29 || command == 30) {//переработка органики перед собой относительно
-				if (pht_org_block != 1) {
-					pht_org_block = 2;
-					recycle_organics(commands[(index + 1) % max_mind] % 8, (int)(commands[(index + 2) % max_mind] * Constant.org_recycle_coeff));
+				if (on(BotAction.RECYCLE)) {
+					recycle_cmd(commands[(index + 1) % max_mind] % 8, (int)(commands[(index + 2) % max_mind] * Constant.org_recycle_coeff));
 				}
 				index += 3;
 				index %= max_mind;
 				break;
 			}else if (command == 31 || command == 32) {//переработка органики перед собой абсолютно
-				if (pht_org_block != 1) {
-					pht_org_block = 2;
-					recycle_organics(rotate, (int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
+				if (on(BotAction.RECYCLE)) {
+					recycle_cmd(rotate, (int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
 				}
 				index += 2;
 				index %= max_mind;
@@ -436,7 +424,9 @@ public class Bot extends BotSuper {
 					index = commands[(index + 4) % max_mind];
 				}
 			}else if (command == 37) {//установить направление в случайное
-				rotate = rand.nextInt(8);
+				if (on(BotAction.RANDOM_DIR)) {
+					random_dir();
+				}
 				index += 1;
 				index %= max_mind;
 			}else if (command == 38) {//сколько ботов вокруг
@@ -453,14 +443,18 @@ public class Bot extends BotSuper {
 				int rot = commands[(index + 1) % max_mind] % 8;
 				int time = commands[(index + 2) % max_mind] % 16 + 1;
 				int new_type = commands[(index + 3) % max_mind] % 8;
-				multiply(rot, 1, time, new_type, false, iterator);
+				if (on(BotAction.SEED)) {
+					multiply(rot, 1, time, new_type, false, iterator);
+				}
 				index += 4;
 				index %= max_mind;
 				break;
 			}else if (command == 40) {//стрелять семечком абсолютно
 				int time = commands[(index + 1) % max_mind] % 16 + 1;
 				int new_type = commands[(index + 2) % max_mind] % 8;
-				multiply(rotate, 1, time, new_type, false, iterator);
+				if (on(BotAction.SEED)) {
+					multiply(rotate, 1, time, new_type, false, iterator);
+				}
 				index += 3;
 				index %= max_mind;
 				break;
@@ -468,13 +462,17 @@ public class Bot extends BotSuper {
 				index = commands[(index + 1 + type) % max_mind];
 			}else if (command == 42) {//добавление в цепочку относительно
 				int new_type = commands[(index + 2) % max_mind] % 8;
-				multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, true, iterator);
+				if (on(BotAction.CHAIN_DIVIDE)) {
+					multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, true, iterator);
+				}
 				index += 3;
 				index %= max_mind;
 				break;
 			}else if (command == 43) {//добавление в цепочку абсолютно
 				int new_type = commands[(index + 1) % max_mind] % 8;
-				multiply(rotate, 0, 0, new_type, true, iterator);
+				if (on(BotAction.CHAIN_DIVIDE)) {
+					multiply(rotate, 0, 0, new_type, true, iterator);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
@@ -489,12 +487,16 @@ public class Bot extends BotSuper {
 					index = commands[(index + 4) % max_mind];
 				}
 			}else if (command == 45) {//присоеденить соседа к цепочке относительно
-				add_neighbour_to_chain(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.CHAIN_LINK)) {
+					add_neighbour_to_chain(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 46) {//присоеденить соседа к цепочке абсолютно
-				add_neighbour_to_chain(rotate);
+				if (on(BotAction.CHAIN_LINK)) {
+					add_neighbour_to_chain(rotate);
+				}
 				index += 1;
 				index %= max_mind;
 				break;
@@ -507,7 +509,9 @@ public class Bot extends BotSuper {
 				index = commands[(index + 1 + genom_current_idx) % max_mind];
 			}else if(command == 49){//королева. прославить свою королеву
 				if(queen == 2 && queen_bot != null) {
-					set_queen(queen_bot,this,1);
+					if (on(BotAction.QUEEN_CALL)) {
+						set_queen(queen_bot,this,1);
+					}
 					index += 1;//без сдвига мозг выполнял эту команду вечно
 					index %= max_mind;
 					break;
@@ -520,7 +524,9 @@ public class Bot extends BotSuper {
 				if(c >= 5 && queen == 0 || queen == 1) {//если уже королева, то делаем повторный призыв подчиненных
 					//queen = 1;
 					//System.out.println("Рождение королевы. Связей: "+c);
-					set_queen(this,this,0);
+					if (on(BotAction.QUEEN_BECOME)) {
+						set_queen(this,this,0);
+					}
 					index = commands[(index + 1) % max_mind];
 				}else {
 					index = commands[(index + 2) % max_mind];
@@ -539,7 +545,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius + 1;
 					//System.out.println("Королева. Приказ королевы в дистанции: do_command="+do_command+" distance="+distance);
-					queen_orders(distance, do_command, 0);
+					if (on(BotAction.QUEEN_ORDER)) {
+						queen_orders(distance, do_command, 0);
+					}
 					index += 3;//команда + 2 параметра
 					index %= max_mind;
 					break;
@@ -552,7 +560,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius;
 					//System.out.println("Королева. Приказ королевы за дистанцией: do_command="+do_command+" distance="+distance);
-					queen_orders(distance, do_command, 1);
+					if (on(BotAction.QUEEN_ORDER)) {
+						queen_orders(distance, do_command, 1);
+					}
 					index += 3;//команда + 2 параметра
 					index %= max_mind;
 					break;
@@ -565,7 +575,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius + 2;
 					//System.out.println("Королева. Приказ королевы перед дистанцией: do_command="+do_command+" distance="+distance);
-					queen_orders(distance, do_command, -1);
+					if (on(BotAction.QUEEN_ORDER)) {
+						queen_orders(distance, do_command, -1);
+					}
 					index += 3;//команда + 2 параметра
 					index %= max_mind;
 					break;
@@ -585,6 +597,81 @@ public class Bot extends BotSuper {
 			}else {
 				index += command;
 				index %= max_mind;
+			}
+		}
+	}
+	//
+	//ДЕЙСТВИЯ ТЕЛА (BotAction). Код перенесен из update_commands без изменений.
+	//
+	public boolean on(BotAction a) {//включено ли действие (галочка); выключенное — команда без эффекта
+		return a.enabled();
+	}
+	public double oxygen() {//среда в клетке бота — для датчиков и своих алгоритмов
+		return oxygen_map[xpos][ypos];
+	}
+	public double co2() {
+		return co2_map[xpos][ypos];
+	}
+	public double organics(int cx, int cy) {
+		return org_map[cx][cy];
+	}
+	public int dir(int d) {//направление действия: 0..7 или BotAction.FORWARD — куда смотрю
+		return d == BotAction.FORWARD ? rotate : Constant.mod(d, 8);
+	}
+	public void turn(int angle) {//повернуть на угол 0..7
+		rotate += angle;
+		rotate %= 8;
+	}
+	public void set_dir(int d) {
+		rotate = d;
+	}
+	public void random_dir() {
+		rotate = rand.nextInt(8);
+	}
+	public void photosynthesis() {//фотосинтез: нужен CO2, специализация — не переработчик
+		int sector = Constant.sector(ypos);
+		//if (sector <= 7 && pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
+		if (pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
+			pht_org_block = 1;
+			double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
+			energy += pe;
+			Ledger.in_sun += pe;
+			go_green();
+			oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
+//			if (oxygen_map[xpos][ypos] > 1) {
+//				oxygen_map[xpos][ypos] = 1;
+//			}
+			co2_map[xpos][ypos] -= Constant.pht_co2_coeff;
+			if (co2_map[xpos][ypos] < 0) {
+				co2_map[xpos][ypos] = 0;
+			}
+		}
+	}
+	public void move_cmd(int rot) {//шаг: кислород по тесноте, без связей цепочки
+		int count = bot_count() + 1;
+		if (count_oxygen() >= Constant.move_ox_coeff * count && count_chains() == 0) {
+			oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
+			int sens = move(rot);
+			if (sens == 1) {
+				energy -= Constant.energy_for_move;
+				Ledger.out_move += Constant.energy_for_move;
+			}
+		}
+	}
+	public void attack_cmd(int rot) {//атака: кислород по тесноте
+		int count = bot_count() + 1;
+		if (count_oxygen() >= Constant.attack_ox_coeff * count) {
+			oxygen_map[xpos][ypos] -= Constant.attack_ox_coeff * count;
+			attack(rot);
+		}
+	}
+	public void recycle_cmd(int rot, int amount) {//переработка органики: rot -1 — под собой; специализация — не фотосинтетик
+		if (pht_org_block != 1) {
+			pht_org_block = 2;
+			if (rot < 0) {
+				recycle_organics_under(amount);
+			}else {
+				recycle_organics(rot, amount);
 			}
 		}
 	}
@@ -896,6 +983,7 @@ public class Bot extends BotSuper {
 //					new_bot.commands = new_brain;
 					new_bot.genom_array = new_brain;
 					new_bot.set_current_genom(genom_current_idx);//потомок продолжает с того же генома, что и родитель
+					new_bot.brain = brain == null ? null : brain.child(this);
 					//цвет клана наследуется и чуть сдвигается при каждой мутации — видны родственные группы
 					new_bot.clan_color = mutated ? drift_color(clan_color, 10) : clan_color;
 					//

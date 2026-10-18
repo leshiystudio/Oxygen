@@ -81,6 +81,8 @@ public class Presets {
 				f.setInt(null, Integer.parseInt(value));
 			}else if (t == double.class) {
 				f.setDouble(null, Double.parseDouble(value));
+			}else if (t == String.class) {
+				f.set(null, value);
 			}else if (t == int[].class) {
 				String[] parts = value.split(",");
 				int[] arr = new int[parts.length];

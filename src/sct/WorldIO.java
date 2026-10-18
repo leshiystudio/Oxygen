@@ -97,6 +97,7 @@ public class WorldIO {
 			int[] queen_refs = new int[n];
 			for (int i = 0; i < n; i++) {
 				Bot b = Bot.load(in, ox, co2, org, map, objects);
+				b.brain = Brains.bot_brain(Constant.bot_brain);//мозг в файле версии 1 не хранится
 				queen_refs[i] = b.load_queen_ref;
 				objects.add(b);
 				map[b.xpos][b.ypos] = b;

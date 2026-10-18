@@ -62,6 +62,19 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 органика. Приход — фотосинтез; расход — плата за жизнь и движение, потолок энергии, обрезка
 органики. Строка `balance diff` на панели должна оставаться на уровне погрешности (~1e-5).
 
+## Действия и свои алгоритмы
+
+Действия тела бота — `BotAction`: `turn, set_dir, random_dir, move, photo, recycle, attack,
+give, share, divide, seed, chain_divide, chain_link, queen_call, queen_become, queen_order`.
+Любые можно выключить: `--set bot_actions_off=attack,seed`. Выключенное действие ничего не
+делает; геном при этом идет дальше как обычно.
+
+Мозг выбирается параметром `--set bot_brain=<имя>`: `genome` (геном команд, по умолчанию)
+или свой алгоритм. Свой алгоритм — класс `implements Brain<Bot>` (пример — `Brains.SimpleBrain`):
+читает поля бота и среду (`energy`, `see()`, `oxygen()`, `organics()`, датчики `BotSensors`)
+и вызывает действия: `BotAction.PHOTO.run(b, it)`, `BotAction.ATTACK.run(b, it, BotAction.FORWARD)`.
+Чтобы он появился в списке — одна строка в `Brains`.
+
 ## Проверки и замеры
 
 ```bash
