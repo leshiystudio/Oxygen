@@ -54,7 +54,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	private int xDiff;
 	private int yDiff;
 	private Point startPoint;
-	private boolean render = true;
+	protected boolean render = true;
 	protected boolean render_border = false;
 	protected boolean pause = false;
 	// старый код --
@@ -67,6 +67,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	int b_count = 0;//количество ботов
 	int obj_count = 0;//количество объектов
 	int org_count = 0;//количество семян
+	int population = 0;//номер популяции (сколько раз создавали мир)
+	Bot selection = null;//выбранный бот
 	int draw_type = 0;//режим отрисовки
 	int res_draw_type = 0;//режим отрисовки фона/ресурсов/окружения
 	
@@ -157,7 +159,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 				if (res_draw_type == 1) {
 					DrawBio.draw_ox(g2dTail, oxygen_map, org_map, zoom, zoom_disp_pos);
 				}else if (res_draw_type == 2){
-					DrawBio.draw_org(g2dTail, org_map, zoom, zoom_disp_pos);
+					DrawBio.draw_org_ox(g2dTail, org_map, oxygen_map, zoom, zoom_disp_pos);
 				}else if (res_draw_type == 3) {
 					DrawBio.draw_mnr(g2dTail, mnr_map);
 				}else if (res_draw_type == 4) {
@@ -169,7 +171,20 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			for(Bot b: objects) {
 				b.Draw(g2dTail, draw_type, zoom, zoom_disp_pos);
 			}
-		}		
+			if (draw_type == 7) {//связи королев с подчиненными
+				for(Bot b: objects) {
+					if (b.queen == 1) {
+						b.queen_draw(g2dTail, b, b, 1);
+					}
+				}
+			}
+			if (selection != null) {//выбранный бот
+				g2dTail.setColor(Color.RED);
+				g2dTail.setStroke(new BasicStroke(2));
+				g2dTail.drawRect(selection.xpos * Constant.size - 2, selection.ypos * Constant.size - 2, Constant.size + 4, Constant.size + 4);
+				g2dTail.setStroke(new BasicStroke(1));
+			}
+		}
 		//------------------------------------------
 
 		// Далее множим тайл для создания иллюзии бесконечного мира
@@ -288,6 +303,13 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		
 		Point p = e.getPoint();
 		System.out.println("MouseEvent. x: "+xLocal+", y: "+yLocal+", Point: "+p);
+		Bot b = Map[xLocal][yLocal];//выбор бота
+		if (b != null && b.killed == 0) {
+			selection = b;
+		}else {
+			selection = null;
+		}
+		repaint();
 	}
 
 	@Override
@@ -344,6 +366,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	}
 	public void kill_all() {//очистить мир
 		steps = 0;
+		population++;
+		selection = null;
 		objects = new ArrayList<Bot>();
 		SimplexNoise noise = new SimplexNoise(rand.nextInt(-1000000000, 1000000000));//шум
 		Map = new Bot[Constant.world_scale[0]][Constant.world_scale[1]];
@@ -379,6 +403,9 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 				if (next_bot.killed == 1) {
 					iterator.remove();
 				}
+			}
+			if (selection != null && selection.killed == 1) {
+				selection = null;
 			}
 			//
 			repaint();

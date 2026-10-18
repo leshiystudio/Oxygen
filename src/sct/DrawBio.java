@@ -62,6 +62,39 @@ public class DrawBio {
 		}
 	}
 	//
+	public static void draw_org_ox(Graphics canvas, double[][] org_map,double[][] oxygen_map, int zoom, int[] zoom_disp_pos) {
+		int w = Constant.world_scale[0] * Constant.size / Constant.zoom_sizes[zoom];
+		int h = Constant.world_scale[1] * Constant.size / Constant.zoom_sizes[zoom];
+		for (int i = 0; i < Constant.world_scale[0] * Constant.size / Constant.zoom_sizes[zoom]; i++) {
+			for (int j = 0; j < Constant.world_scale[1] * Constant.size / Constant.zoom_sizes[zoom]; j++) {
+				if (zoom == 0) {//зум 1x
+					int x = i;
+					int y = j;
+					double gr = Constant.border(org_map[x][y], Constant.org_die_level, 0);
+					canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(0, 0, 0), gr / Constant.org_die_level));
+					canvas.fillRect(x * Constant.zoom_sizes[zoom], y * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
+
+					double ox = oxygen_map[x][y];
+					if (ox > Constant.ox_render_maximum_coeff) {
+						ox = Constant.ox_render_maximum_coeff;
+					}
+					canvas.setColor(Constant.gradient(new Color(255, 255, 255, 0), new Color(128, 128, 255, 210), ox * (1 / Constant.ox_render_maximum_coeff)));
+					canvas.fillRect(x * Constant.size, y * Constant.size, Constant.size, Constant.size);
+					if (org_map[x][y] >= Constant.org_die_level) {
+						canvas.setColor(new Color(90, 0, 0));
+						canvas.fillRect(x * Constant.size, y * Constant.size, Constant.size, Constant.size);
+					}
+				}else {//зум 2.5x - 5x
+					int x = i + zoom_disp_pos[0] - w / 2;
+					int y = j + zoom_disp_pos[1] - h / 2;
+					double gr = Constant.border(org_map[x][y], Constant.org_die_level, 0);
+					canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(0, 0, 0), gr / Constant.org_die_level));
+					canvas.fillRect(i * Constant.zoom_sizes[zoom], j * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
+				}
+			}
+		}
+	}	
+	//
 	public static void draw_co2(Graphics canvas, double[][] co2_map, double[][] org_map, int zoom, int[] zoom_disp_pos) {
 		int w = Constant.world_scale[0] * Constant.size / Constant.zoom_sizes[zoom];
 		int h = Constant.world_scale[1] * Constant.size / Constant.zoom_sizes[zoom];
@@ -99,9 +132,17 @@ public class DrawBio {
 	}
 	//
 	public static void draw_mnr(Graphics canvas, double[][] mnr_map) {
+//		System.out.println("draw_mnr");
+
 		for (int x = 0; x < Constant.world_scale[0]; x++) {
 			for (int y = 0; y < Constant.world_scale[1]; y++) {
-				canvas.setColor(new Color(255 - (int)(mnr_map[x][y] / 1000 * 255), 255 - (int)(mnr_map[x][y] / 1000 * 255), 255));
+				//canvas.setColor(new Color(255 - (int)(mnr_map[x][y] / 1000 * 255), 255 - (int)(mnr_map[x][y] / 1000 * 255), 255));
+//				canvas.setColor(new Color(255 - (int)(mnr_map[x][y] / 1000 * 255), 255 - (int)(mnr_map[x][y] / 1000 * 255), 255));
+				double gr = Constant.border(mnr_map[x][y], 1000, 0);
+				//double norm_gr = Constant.normalize(0, 1000, gr);
+				//double show_gr = (1 - Math.pow(1 - norm_gr, 4));
+//				System.out.println("gr:"+ gr +" norm_gr:"+norm_gr + " show_gr:" + show_gr);
+				canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(0, 0, 0), gr / 1000 ));
 				canvas.fillRect(x * Constant.size, y * Constant.size, Constant.size, Constant.size);
 			}
 		}

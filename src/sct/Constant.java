@@ -6,30 +6,33 @@ public class Constant {
 	public static int W = 1920;
 	public static int H = 1080;
 	public static int size = 5;
-	public static int[] world_scale = {500, 500};
-	public static int starting_bot_count = 10000;
-	public static double starting_ox = 0.02;
-	public static double starting_co2 = 0.02;
+	public static int[] world_scale = {400,400};//{16 * 50, 9 * 50};
+	public static int starting_bot_count = 5000;
+	public static int mind_size = 64; //длина одного генома
+	public static int mind_count = 2; //32; количество геномов
+	public static int mind_max_value_command = 64; //64; //максимальное значение для индекса команды
+	public static double starting_ox = 0.04; //0.02;
+	public static double starting_co2 = 0.04; //0.02;
 	public static int starting_org = 200;
-	public static double ox_render_maximum_coeff = 0.25;
-	public static double co2_render_maximum_coeff = 0.25;
-	public static String[] draw_type_names = {"predators", "energy", "color", "clans", "age", "types", "chains"};
+	public static double ox_render_maximum_coeff = 0.25; //0.25;
+	public static double co2_render_maximum_coeff = 0.25; //0.25;
+	public static String[] draw_type_names = {"predators", "energy", "color", "clans", "age", "types", "chains", "queens"};
 	public static String[] res_type_names = {"none", "oxygen", "organics", "minerals", "co2"};
 	public static String[] mouse_func_names = {"select", "set", "remove"};
 	public static int[] zoom_sizes = {5, 5, 10}; //{2, 5, 10};
 	//
-	public static double org_recycle_ox_coeff = 0.000027;
-	public static double life_ox_coeff = 0.002;
+	public static double org_recycle_ox_coeff = 0.000097; //0.000027;
+	public static double life_ox_coeff = 0.001; // 0.002;
 	public static double move_ox_coeff = 0.003;
-	public static double attack_ox_coeff = 0.01;
-	public static double pht_ox_coeff = 0.003;
+	public static double attack_ox_coeff = 0.005; //0.005 //0.01;
+	public static double pht_ox_coeff = 0.003; //0.003;
 	public static double die_ox_coeff = 0.01;
-	public static double evaporation_ox_coeff = 0.98;
-	public static double ox_distribution_min = 0.001;
+	public static double evaporation_ox_coeff = 0.9994; //0.98;
+	public static double ox_distribution_min = 0.001; //0.001;
 	//
 	public static double life_co2_coeff = 0.001;
 	public static double pht_co2_coeff = 0.0003;
-	public static double org_recycle_co2_coeff = 0.0001;
+	public static double org_recycle_co2_coeff = 0.000097; //0.0001;
 	public static double die_co2_coeff = 0.0003;
 	//
 	public static double org_die_level = 800.0;
@@ -39,11 +42,15 @@ public class Constant {
 	public static int energy_for_multiply = 50;
 	public static int energy_for_auto_multiply = 800;
 	public static int max_age = 1500;
+	public static int max_different_genom = 3;
+	public static int mutate_chance_percent = 10;
 	//
-	public static double pht_coeff = 400;
+	public static int queen_max_radius = 8;
+	//
+	public static double pht_coeff = 110; //400;
 	public static int[] pht_energy_list = {12, 11, 10, 9, 8, 7, 6, 5};
-	public static double pht_neighbours_coeff = 0.1111;
-	public static double org_recycle_coeff = 1;
+	public static double pht_neighbours_coeff = 0.1111*2;
+	public static double org_recycle_coeff = 2; //1;
 	//
 	public static int[][] movelist = {
 		{0, -1},
@@ -95,12 +102,16 @@ public class Constant {
 		return(pos);
 	}
 	public static Color gradient(Color color1, Color color2, double grad) {
-		int r = (int)(color1.getRed() * (1 - grad) + color2.getRed() * grad);
-		int g = (int)(color1.getGreen() * (1 - grad) + color2.getGreen() * grad);
-		int b = (int)(color1.getBlue() * (1 - grad) + color2.getBlue() * grad);
-		return(new Color(r, g, b));
+		int r = Constant.mod((int)(color1.getRed() * (1 - grad) + color2.getRed() * grad),256);
+		int g = Constant.mod((int)(color1.getGreen() * (1 - grad) + color2.getGreen() * grad),256);
+		int b = Constant.mod((int)(color1.getBlue() * (1 - grad) + color2.getBlue() * grad),256);
+		int a = (int) Constant.border((color1.getAlpha() * (1 - grad) + color2.getAlpha() * grad)%256,255,0);
+		return(new Color(r, g, b, a));
 	}
 	public static int mod(int a, int b) {
 		return (a % b + b) % b;
-	}	
+	}
+    public static double normalize(double min, double max, double value) {
+        return (value - min) / (max - min);
+    }
 }

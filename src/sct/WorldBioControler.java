@@ -19,6 +19,7 @@ public class WorldBioControler extends JPanel{
 	
 	private JButton button_start_stop = new JButton("Stop");
 	private JButton button_render_border = new JButton("Render Border: Off");
+	private JButton button_render_bot = new JButton("Render Bots: On");
 	private JLabel label_bot_count = new JLabel("label_bot_count: ");
 	
 	public WorldBioControler(WorldBio world, int width, int height) {
@@ -47,6 +48,10 @@ public class WorldBioControler extends JPanel{
         button_render_border.addActionListener(new render_border());
 		button_render_border.setBounds(x, (h+padding)*2+padding, w, h);
         add(button_render_border);
+
+        button_render_bot.addActionListener(new render_bot());
+		button_render_bot.setBounds(x, (h+padding)*3+padding, w, h);
+        add(button_render_bot);
 
         label_bot_count.setBounds(x, (h+padding)*4+padding, w, h);
         add(label_bot_count);
@@ -88,7 +93,12 @@ public class WorldBioControler extends JPanel{
         chain_button.addActionListener(new change_draw_type(6));
         chain_button.setBounds(x, (h+padding)*16+padding, w, h);
         add(chain_button);
-        
+        //
+        JButton queen_button = new JButton("Queen");
+        queen_button.addActionListener(new change_draw_type(7));
+        queen_button.setBounds(x, (h+padding)*17+padding, w, h);
+        add(queen_button);
+
         //
         //смена режимов отрисовки фона
         //
@@ -128,7 +138,20 @@ public class WorldBioControler extends JPanel{
 
         canvas.drawString("render bot type: " + Constant.draw_type_names[world.draw_type] + " view", 5, 35*5+5);  
 
-        canvas.drawString("render res type: " + Constant.res_type_names[world.res_draw_type] + " view", 5, 35*6+5);  
+        canvas.drawString("render res type: " + Constant.res_type_names[world.res_draw_type] + " view", 5, 35*6+5);
+
+        Bot s = world.selection;//выбранный бот
+        int y = 35*23+15;
+        if (s != null) {
+        	canvas.drawString("selection: [" + s.xpos + ", " + s.ypos + "]", 5, y);
+        	canvas.drawString("energy: " + String.valueOf((int)s.energy) + ", age: " + s.age, 5, y + 20);
+        	canvas.drawString("type: " + s.type + ", memory: " + s.memory + ", queen: " + s.queen, 5, y + 40);
+        	canvas.drawString("color: (" + s.color.getRed() + ", " + s.color.getGreen() + ", " + s.color.getBlue() + ")", 5, y + 60);
+        	canvas.setColor(s.color);
+        	canvas.fillRect(width - 35, y - 15, 25, 25);
+        }else {
+        	canvas.drawString("selection: none", 5, y);
+        }
 
         repaint();
 	}
@@ -150,6 +173,16 @@ public class WorldBioControler extends JPanel{
 				button_render_border.setText("Render Border: On");
 			}else {
 				button_render_border.setText("Render Border: Off");
+			}
+		}
+	}
+	private class render_bot implements ActionListener{
+		public void actionPerformed(ActionEvent e) {
+			world.render = !world.render;
+			if (world.render) {
+				button_render_bot.setText("Render Bots: On");
+			}else {
+				button_render_bot.setText("Render Bots: Off");
 			}
 		}
 	}
