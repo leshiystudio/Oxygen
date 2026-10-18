@@ -27,6 +27,9 @@ public class WorldIO {
 	private static final int version = 1;
 	//
 	public static void save(WorldBio w, File file) throws IOException {
+		if (w.plants != null) {
+			throw new IOException("мир с растениями пока не сохраняется (формат версии 2 — этап 4)");
+		}
 		w.lock.lock();
 		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new GZIPOutputStream(new FileOutputStream(file))))) {
 			out.writeInt(magic);

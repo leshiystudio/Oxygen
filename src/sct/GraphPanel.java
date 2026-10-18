@@ -19,21 +19,24 @@ import javax.swing.Timer;
 public class GraphPanel extends JPanel {
 	private static final long serialVersionUID = 1L;
 	//
-	private static final String[] group_names = {"cells", "energy", "events/step", "deaths/step", "genomes", "gases", "ms/step", "queens"};
+	private static final String[] group_names = {"cells", "energy", "events/step", "deaths/step", "genomes", "gases", "ms/step", "queens", "plants"};
 	private static final int[][] group_series = {
 		{History.BOTS, History.SEEDS},
 		{History.ENERGY_CELLS, History.ORGANICS, History.ENERGY_TOTAL},
 		{History.BIRTHS, History.DEATHS, History.MUTATIONS},
-		{History.DEATH_CAUSE0 + 1, History.DEATH_CAUSE0 + 2, History.DEATH_CAUSE0 + 3, History.DEATH_CAUSE0 + 4,
-			History.DEATH_CAUSE0 + 5, History.DEATH_CAUSE0 + 6, History.DEATH_CAUSE0 + 7, History.DEATH_CAUSE0},
+		{History.death_index(1), History.death_index(2), History.death_index(3), History.death_index(4),
+			History.death_index(5), History.death_index(6), History.death_index(7), History.death_index(0),
+			History.death_index(8), History.death_index(9), History.death_index(10), History.death_index(11)},
 		{History.UNIQUE, History.CLANS},
 		{History.OXYGEN, History.CO2},
 		{History.MS},
 		{History.QUEENS, History.SUBS},
+		{History.PLANTS, History.CORPSES, History.SOIL},
 	};
 	private static final Color[] palette = {
 		new Color(80, 160, 255), new Color(255, 160, 60), new Color(90, 200, 120), new Color(230, 80, 90),
-		new Color(180, 120, 230), new Color(230, 210, 80), new Color(80, 210, 210), new Color(160, 160, 160)
+		new Color(180, 120, 230), new Color(230, 210, 80), new Color(80, 210, 210), new Color(160, 160, 160),
+		new Color(240, 120, 200), new Color(120, 200, 90), new Color(200, 150, 100), new Color(110, 140, 240)
 	};
 	private static final int[] lengths = {300, 1000, 3000, 0};//0 — вся история
 	//

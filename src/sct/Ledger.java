@@ -21,7 +21,12 @@ public class Ledger {
 	public static final int DIE_COLLISION = 5;//столкновение с семечком
 	public static final int DIE_QUEEN_LOST = 6;//подчиненная без королевы
 	public static final int DIE_REMOVED = 7;//удалена инструментом
-	public static final String[] die_names = {"other", "age", "hunger", "organics", "eaten", "collision", "queen lost", "removed"};
+	public static final int DIE_HEALTH = 8;//растение: кончилось здоровье
+	public static final int DIE_LOST = 9;//растение: тело потеряло все цели передачи энергии
+	public static final int DIE_TOXIC = 10;//растение: токсичная почва
+	public static final int DIE_SOIL = 11;//растение: почва под телом истощена
+	public static final String[] die_names = {"other", "age", "hunger", "organics", "eaten", "collision", "queen lost", "removed",
+		"health", "branch lost", "toxic soil", "soil exhausted"};
 	//
 	//за текущий шаг
 	public static double in_sun;//фотосинтез
@@ -32,6 +37,13 @@ public class Ledger {
 	public static double in_negative;//отрицательная энергия погибшей клетки, списанная при смерти
 	public static double out_org_clamp;//органика сверх org_die_level, срезанная при смерти
 	public static double out_org_other;//органика, убранная фотосинтезом и семечками в мертвой зоне
+	//растения (журнал biosim)
+	public static double in_plant_sun;//фотосинтез листьев
+	public static double in_plant_health;//здоровье, переведенное в энергию
+	public static double out_plant_step;//плата за ход
+	public static double out_plant_punish;//штраф THINK_OLD
+	public static double out_plant_birth;//цена рождения
+	public static double out_soil_decay;//вымывание энергии почвы
 	public static int births;
 	public static int mutations;
 	public static int[] deaths = new int[die_names.length];
@@ -50,16 +62,23 @@ public class Ledger {
 		in_negative = 0;
 		out_org_clamp = 0;
 		out_org_other = 0;
+		in_plant_sun = 0;
+		in_plant_health = 0;
+		out_plant_step = 0;
+		out_plant_punish = 0;
+		out_plant_birth = 0;
+		out_soil_decay = 0;
 		births = 0;
 		mutations = 0;
 		java.util.Arrays.fill(deaths, 0);
 	}
 	//
 	public static double in_step() {
-		return in_sun + in_negative;
+		return in_sun + in_negative + in_plant_sun + in_plant_health;
 	}
 	public static double out_step() {
-		return out_life + out_move + out_cap + out_birth_fail + out_org_clamp + out_org_other;
+		return out_life + out_move + out_cap + out_birth_fail + out_org_clamp + out_org_other
+			+ out_plant_step + out_plant_punish + out_plant_birth + out_soil_decay;
 	}
 	//
 	public static double measure(WorldBio w) {//фактическая полная энергия мира
@@ -70,6 +89,13 @@ public class Ledger {
 		for (double[] row : w.org_map) {
 			for (double v : row) {
 				sum += v;
+			}
+		}
+		if (w.soil_map != null) {//энергия почвы — есть, когда в мире растения
+			for (double[] row : w.soil_map) {
+				for (double v : row) {
+					sum += v;
+				}
 			}
 		}
 		return sum;

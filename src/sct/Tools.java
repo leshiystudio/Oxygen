@@ -50,6 +50,10 @@ public class Tools {
 			public void apply(WorldBio w, Bot bot, int x, int y) {
 				System.out.printf("cell [%d, %d]: oxygen %.4f, co2 %.4f, organics %.1f, minerals %.1f%n",
 					x, y, w.oxygen_map[x][y], w.co2_map[x][y], w.org_map[x][y], w.mnr_map[x][y]);
+				IBot o = w.Map[x][y];
+				if (o != null && !(o instanceof Bot)) {
+					System.out.println("  " + o.describe());
+				}
 				if (bot != null) {
 					System.out.printf("  bot: state %d, energy %.1f, age %.1f, type %d, rotate %d, queen %d, chains %d, genom %d, index %d, kin %d%n",
 						bot.state, bot.energy, bot.age, bot.type, bot.rotate, bot.queen, bot.count_chains(), bot.genom_current_idx, bot.index, bot.kin_id);

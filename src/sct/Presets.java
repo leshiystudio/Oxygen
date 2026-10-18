@@ -62,6 +62,7 @@ public class Presets {
 		Bot.rand.setSeed(seed);
 		WorldUtils.rand.setSeed(seed + 1);
 		w.rand.setSeed(seed + 2);
+		sct.plants.PlantWorld.rand.setSeed(seed + 3);
 	}
 	//
 	public static void set(String assignment) {//имя=значение для public static поля Constant
@@ -71,6 +72,22 @@ public class Presets {
 		}
 		String name = assignment.substring(0, eq).trim();
 		String value = assignment.substring(eq + 1).trim();
+		if (name.equals("plant_preset")) {//набор растений biosim: config, original, noleak, balanced (до plant.<имя>)
+			try {
+				sct.plants.PlantConfig.current = sct.plants.PlantConfig.preset(value);
+			}catch (IllegalArgumentException e) {
+				fail(e.getMessage());
+			}
+			return;
+		}
+		if (name.startsWith("plant.")) {//параметр растений: plant.<имя поля PlantConfig>
+			try {
+				sct.plants.PlantConfig.current.set(name.substring(6), value);
+			}catch (IllegalArgumentException e) {
+				fail(e.getMessage());
+			}
+			return;
+		}
 		try {
 			Field f = Constant.class.getField(name);
 			if (!Modifier.isStatic(f.getModifiers())) {

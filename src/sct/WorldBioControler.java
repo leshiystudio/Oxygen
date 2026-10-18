@@ -130,7 +130,7 @@ public class WorldBioControler extends JPanel{
         header("Background");
         place_pair(res_draw_type_button("None", 0), res_draw_type_button("Oxygen", 1));
         place_pair(res_draw_type_button("Org + O2", 2), res_draw_type_button("Minerals", 3));
-        place_pair(res_draw_type_button("Co2", 4), new JLabel());
+        place_pair(res_draw_type_button("Co2", 4), res_draw_type_button("Soil", 6));
 
         //
         //инструмент правой кнопки мыши
@@ -185,7 +185,7 @@ public class WorldBioControler extends JPanel{
         bind_key("OPEN_BRACKET", () -> world.next_tool(-1));
         bind_key("CLOSE_BRACKET", () -> world.next_tool(1));
         bind_key("ESCAPE", world::reset_tool);
-        for (int i = 1; i <= 8; i++) {
+        for (int i = 1; i <= 9; i++) {
         	int group = i - 1;
         	bind_key(String.valueOf(i), () -> graphs.toggle_group(group));
         }
@@ -297,7 +297,7 @@ public class WorldBioControler extends JPanel{
 	}
 
 	private void refresh() {
-		label_bot_count.setText("bots: " + world.b_count + ", seeds: " + world.org_count);
+		label_bot_count.setText("bots: " + world.b_count + ", seeds: " + world.org_count + (world.plants != null ? ", plants: " + world.plant_count : ""));
 		label_steps.setText("steps: " + world.steps + (Presets.seed >= 0 ? ", seed " + Presets.seed : ""));
 		label_ms.setText(String.format("ms/step: %.1f", world.ms_per_step));
 		label_speed.setText("speed: " + world.speed_name());

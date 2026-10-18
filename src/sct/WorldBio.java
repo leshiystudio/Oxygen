@@ -34,7 +34,10 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	Timer timer;//перерисовка окна (~30 кадров/с); сама симуляция идет в sim_thread
 	double[][] oxygen_map;//кислород
 	double[][] co2_map;//углекислота
-	double[][] org_map;//органика
+	public double[][] org_map;//органика (общая: боты Oxygen и растения)
+	public double[][] soil_map;//энергия почвы — только когда в мире растения (иначе null)
+	public sct.plants.PlantWorld plants;//растения: общие данные мира для них (иначе null)
+	int plant_count = 0;//клеток растений (с трупами)
 	double[][] mnr_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];//минералы
 	int[][] height_map = new int[Constant.world_scale[0]][Constant.world_scale[1]];//карта высот
 	private double zoomFactor = 1;
@@ -370,6 +373,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		lock.lock();
 		try {
 			BotAction.configure(Constant.bot_actions_off);//галочки действий (этап 4 — у каждой популяции свои)
+			sct.plants.PlantAction.configure(Constant.plant_actions_off);
 			Brain<Bot> brain = Brains.bot_brain(Constant.bot_brain);
 			kill_all();
 			for (int i = 0; i < Constant.starting_bot_count; i++) {
@@ -396,6 +400,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 					}
 				}
 			}
+			spawn_plants();
 			Ledger.reset(this);
 			History.clear();
 			KinClans.update(this);
@@ -403,6 +408,40 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			lock.unlock();
 		}
 		repaint();
+	}
+	private void spawn_plants() {//ростки растений — как init_world в biosim
+		soil_map = null;
+		plants = null;
+		if (Constant.starting_plant_count <= 0) {
+			return;
+		}
+		sct.plants.PlantConfig c = sct.plants.PlantConfig.current;
+		soil_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
+		for (int x = 0; x < Constant.world_scale[0]; x++) {
+			for (int y = 0; y < Constant.world_scale[1]; y++) {
+				soil_map[x][y] = c.energy_around_start_value;
+				if (Constant.starting_bot_count <= 0) {//мир только из растений — стартовая органика biosim
+					org_map[x][y] = c.organic_around_start_value;
+				}
+			}
+		}
+		plants = new sct.plants.PlantWorld(Map, org_map, soil_map, objects, c);
+		Brain<sct.plants.Plant> brain = c.think_mode == sct.plants.PlantConfig.THINK_OLD ? sct.plants.ThinkOld.instance : sct.plants.ThinkNew.instance;
+		int created = 0;
+		int tries = 0;
+		java.util.Random r = sct.plants.PlantWorld.rand;
+		while (created < Constant.starting_plant_count && tries < 1000000) {
+			tries++;
+			int x = r.nextInt(Constant.world_scale[0]);
+			int y = r.nextInt(Constant.world_scale[1]);
+			if (Map[x][y] != null) {
+				continue;
+			}
+			sct.plants.Plant p = sct.plants.Plant.seedling(plants, x, y, brain);
+			objects.add(p);
+			Map[x][y] = p;
+			created++;
+		}
 	}
 	public void kill_all() {//очистить мир
 		steps = 0;
@@ -438,19 +477,27 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		b_count = 0;
 		obj_count = 0;
 		org_count = 0;
+		plant_count = 0;
 		//
 		ListIterator<IBot> bot_iterator = objects.listIterator();
 		while (bot_iterator.hasNext()) {
 			IBot next_bot = bot_iterator.next();
 			next_bot.Update(bot_iterator);
 			obj_count++;
-			if (next_bot instanceof Bot && ((Bot) next_bot).state != 0) {
-				org_count++;
+			if (next_bot instanceof Bot) {
+				if (((Bot) next_bot).state != 0) {
+					org_count++;
+				}else {
+					b_count++;
+				}
 			}else {
-				b_count++;
+				plant_count++;
 			}
 		}
 		//
+		if (plants != null) {//органика -> энергия почвы, вымывание почвы (конец тика biosim)
+			sct.plants.Plant.mineralize(plants);
+		}
 		WorldUtils.gas(oxygen_map, org_map);
 		WorldUtils.gas(co2_map, org_map);
 		WorldUtils.minerals(mnr_map);

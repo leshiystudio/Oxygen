@@ -27,6 +27,9 @@ public class SelfTest {
 		presets_set_field();
 		disabled_action_does_nothing();
 		own_brain_runs();
+		plants_world();
+		plant_child_before_parent();
+		mixed_world();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -253,6 +256,70 @@ public class SelfTest {
 		check("world of 'simple' brains lives (" + w.b_count + " bots)", w.b_count > 0);
 		check("energy balance holds with own brain", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
 		Constant.bot_brain = "genome";
+		Presets.seed = -1;
+	}
+	//
+	private static void plants_world() {
+		System.out.println("plants:");
+		Presets.seed = 6;
+		Constant.starting_bot_count = 0;
+		Constant.starting_plant_count = 400;
+		for (int mode : new int[]{sct.plants.PlantConfig.THINK_NEW, sct.plants.PlantConfig.THINK_OLD}) {
+			sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+			sct.plants.PlantConfig.current.think_mode = mode;
+			WorldBio w = new WorldBio(false);
+			for (int i = 0; i < 300; i++) {
+				w.step();
+			}
+			String name = mode == sct.plants.PlantConfig.THINK_NEW ? "think_new" : "think_old";
+			check(name + ": world of plants lives (" + w.plant_count + " cells)", w.plant_count > 0);
+			check(name + ": energy balance is exact (" + Ledger.total_diff + ")", Ledger.total_diff == 0);
+			boolean refused = false;
+			try {
+				File f = File.createTempFile("oxygen_selftest", ".oxw");
+				f.deleteOnExit();
+				WorldIO.save(w, f);
+			}catch (java.io.IOException e) {
+				refused = true;
+			}
+			check(name + ": saving plants is refused until format 2", refused);
+		}
+		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+		Constant.starting_bot_count = 300;
+		Constant.starting_plant_count = 0;
+		Presets.seed = -1;
+	}
+	//
+	private static void plant_child_before_parent() {
+		System.out.println("plant birth:");
+		Constant.starting_plant_count = 1;
+		WorldBio w = empty_world();
+		Constant.starting_plant_count = 0;
+		sct.plants.PlantWorld pw = new sct.plants.PlantWorld(w.Map, w.org_map, new double[w.Map.length][w.Map[0].length], w.objects, new sct.plants.PlantConfig());
+		Bot before = put(w, 2, 2, 100);
+		sct.plants.Plant p = sct.plants.Plant.seedling(pw, 10, 10, sct.plants.ThinkNew.instance);
+		p.energy = 1000;
+		w.objects.add(p);
+		w.Map[10][10] = p;
+		Bot after = put(w, 4, 4, 100);
+		ListIterator<IBot> it = w.objects.listIterator(w.objects.indexOf(p) + 1);//курсор после родителя, как в ходе мира
+		boolean born = sct.plants.PlantAction.REPRODUCE.run(p, it, 1, 2, sct.plants.Plant.ILIVE);
+		check("plant child is born", born && w.objects.size() == 4);
+		check("child stands right before parent in the list", w.objects.indexOf(p) == 2 && w.objects.get(1) instanceof sct.plants.Plant && w.objects.get(1) != p);
+		check("iterator continues after parent", it.hasNext() && it.next() == after && w.objects.get(0) == before);
+	}
+	//
+	private static void mixed_world() {
+		System.out.println("mixed world:");
+		Presets.seed = 8;
+		Constant.starting_plant_count = 300;
+		WorldBio w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("bots and plants live together (" + w.b_count + " bots, " + w.plant_count + " plant cells)", w.b_count + w.plant_count > 0);
+		check("energy balance holds in mixed world", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Constant.starting_plant_count = 0;
 		Presets.seed = -1;
 	}
 	//

@@ -91,10 +91,14 @@ public class PixelRenderer {
 					c = Theme.mix(Theme.world_bg, Theme.minerals, w.mnr_map[x][y] / 1000.0);
 				}else if (mode == 4) {//углекислый газ
 					c = Theme.mix(Theme.world_bg, Theme.co2, w.co2_map[x][y] / co2_max);
+				}else if (mode == 6) {//энергия почвы (растения): синий, порог токсичности — насыщенный
+					double soil = w.soil_map == null ? 0 : w.soil_map[x][y];
+					double toxic = sct.plants.PlantConfig.current.max_energy_around;
+					c = Theme.mix(Theme.world_bg, Theme.oxygen, soil / toxic);
 				}else {//высоты
 					c = Theme.mix(Theme.world_bg, Theme.minerals, w.height_map[x][y] / 1000.0);
 				}
-				if (mode != 3 && mode != 5 && org >= die) {
+				if (mode != 3 && mode != 5 && mode != 6 && org >= die) {
 					c = Theme.dead_zone;
 				}
 				fill_cell(x, y, s, c);

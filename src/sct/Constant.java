@@ -8,6 +8,7 @@ public class Constant {
 	public static int size = 5;
 	public static int[] world_scale = {400,400};//{16 * 50, 9 * 50};
 	public static int starting_bot_count = 5000;
+	public static int starting_plant_count = 0;//ростков растений (sct.plants) при создании мира; 0 — растений нет
 	public static int mind_size = 64; //длина одного генома
 	public static int mind_count = 2; //32; количество геномов
 	public static int mind_max_value_command = 64; //64; //максимальное значение для индекса команды
@@ -17,7 +18,7 @@ public class Constant {
 	public static double ox_render_maximum_coeff = 0.25; //0.25;
 	public static double co2_render_maximum_coeff = 0.25; //0.25;
 	public static String[] draw_type_names = {"predators", "color", "energy", "clans", "age", "types", "chains", "queens", "kin"}; //индекс = номер режима в Bot.get_color
-	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2"};
+	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2", "height", "soil"};
 	public static String[] mouse_func_names = {"select", "set", "remove"};
 	public static int[] zoom_sizes = {5, 5, 10}; //{2, 5, 10};
 	//
@@ -49,6 +50,7 @@ public class Constant {
 	//
 	public static String bot_actions_off = "";//выключенные действия бота через запятую (BotAction), например "attack,seed"
 	public static String bot_brain = "genome";//мозг ботов (Brains): genome — геном команд
+	public static String plant_actions_off = "";//выключенные действия растений (PlantAction), например "eat,move"
 	//
 	public static double pht_coeff = 110; //400;
 	public static int[] pht_energy_list = {12, 11, 10, 9, 8, 7, 6, 5};

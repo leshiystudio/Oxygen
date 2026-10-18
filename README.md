@@ -23,7 +23,7 @@
 Нужна Java 21+ (проверено на JDK 23). Внешних библиотек нет.
 
 ```bash
-javac -encoding UTF-8 -d out src/sct/*.java
+javac -encoding UTF-8 -d out src/sct/*.java src/sct/plants/*.java
 java -cp out sct.Main                                   # окно
 java -cp out sct.Main --preset small --seed 7           # маленький мир, воспроизводимый
 java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
@@ -62,6 +62,23 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 органика. Приход — фотосинтез; расход — плата за жизнь и движение, потолок энергии, обрезка
 органики. Строка `balance diff` на панели должна оставаться на уровне погрешности (~1e-5).
 
+## Растения (модель biosim)
+
+Пакет `sct.plants` — перенос модели [biosim](../../../../admin/Rep/biosim): ростки, корни, листья,
+проводники, трупы, почва. Правила — как в biosim, энергия целочисленная. Органика общая с
+ботами Oxygen, энергия почвы — свой слой (фон **Soil**).
+
+```bash
+java -cp out sct.Main --set starting_bot_count=0 --set starting_plant_count=1500     # только растения
+java -cp out sct.Main --set starting_plant_count=1500                                # боты и растения вместе
+java -cp out sct.Main --set starting_plant_count=1500 --set plant_preset=original --set plant.leaf_sun_base=40
+```
+
+Параметры — поля `PlantConfig` (имена как в `config.py` biosim): `--set plant.<имя>=<значение>`.
+Наборы biosim: `--set plant_preset=config|original|noleak|balanced` (раньше, чем `plant.<имя>`).
+Мозг: `plant.think_mode=0` (THINK_NEW) или `1` (THINK_OLD). Действия ростка выключаются:
+`--set plant_actions_off=eat,move`. Сохранение мира с растениями — в следующем этапе.
+
 ## Действия и свои алгоритмы
 
 Действия тела бота — `BotAction`: `turn, set_dir, random_dir, move, photo, recycle, attack,
@@ -78,7 +95,7 @@ give, share, divide, seed, chain_divide, chain_link, queen_call, queen_become, q
 ## Проверки и замеры
 
 ```bash
-javac -encoding UTF-8 -d out src/sct/*.java test/sct/*.java
+javac -encoding UTF-8 -d out src/sct/*.java src/sct/plants/*.java test/sct/*.java
 java -Djava.awt.headless=true -cp out sct.SelfTest                       # самопроверка, код выхода 0 — всё прошло
 java -Djava.awt.headless=true -cp out sct.GoldenTest                     # эталон: правила ботов Oxygen не изменились
 java -Djava.awt.headless=true -cp out sct.Bench --steps 1000 --seed 1 --csv metrics.csv

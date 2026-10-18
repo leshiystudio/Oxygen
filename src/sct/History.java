@@ -12,11 +12,16 @@ public class History {
 		"d: other", "d: age", "d: hunger", "d: organics", "d: eaten", "d: collision", "d: queen lost", "d: removed",
 		"unique genomes", "kin clans",
 		"oxygen", "co2",
-		"ms/step", "balance diff"
+		"ms/step", "balance diff",
+		"d: health", "d: branch lost", "d: toxic soil", "d: soil exhausted",
+		"plants", "plant corpses", "soil energy"
 	};
 	public static final int BOTS = 0, SEEDS = 1, QUEENS = 2, SUBS = 3, ENERGY_CELLS = 4, ORGANICS = 5, ENERGY_TOTAL = 6,
 		BIRTHS = 7, DEATHS = 8, MUTATIONS = 9, DEATH_CAUSE0 = 10, UNIQUE = 18, CLANS = 19, OXYGEN = 20, CO2 = 21,
-		MS = 22, BALANCE = 23;
+		MS = 22, BALANCE = 23, DEATH_PLANT0 = 24, PLANTS = 28, CORPSES = 29, SOIL = 30;
+	public static int death_index(int cause) {//колонка причины смерти: первые 8 — подряд с DEATH_CAUSE0, растительные — с DEATH_PLANT0
+		return cause < 8 ? DEATH_CAUSE0 + cause : DEATH_PLANT0 + cause - 8;
+	}
 	//
 	private static final int capacity = 100_000;
 	public static double[][] data = new double[names.length][capacity];
@@ -46,10 +51,22 @@ public class History {
 			size = capacity / 2;
 			stride *= 2;
 		}
-		int bots = 0, seeds = 0, queens = 0, subs = 0;
-		double energy = 0;
+		int bots = 0, seeds = 0, queens = 0, subs = 0, plants = 0, corpses = 0;
+		double energy = 0, plant_energy = 0;
 		for (IBot o : w.objects) {
-			if (!o.alive() || !(o instanceof Bot b)) {
+			if (!o.alive()) {
+				continue;
+			}
+			if (o instanceof sct.plants.Plant p) {
+				if (p.type == sct.plants.Plant.IDEAD) {
+					corpses++;
+				}else {
+					plants++;
+				}
+				plant_energy += o.ledger_energy();
+				continue;
+			}
+			if (!(o instanceof Bot b)) {
 				continue;
 			}
 			if (b.state == 0) {
@@ -79,12 +96,23 @@ public class History {
 		data[SUBS][i] = subs;
 		data[ENERGY_CELLS][i] = energy;
 		data[ENERGY_TOTAL][i] = Ledger.total;
-		data[ORGANICS][i] = Ledger.total - energy - (double)(bots + seeds) * Constant.energy_for_multiply;
+		double soil = 0;
+		if (w.soil_map != null) {
+			for (double[] row : w.soil_map) {
+				for (double v : row) {
+					soil += v;
+				}
+			}
+		}
+		data[ORGANICS][i] = Ledger.total - energy - (double)(bots + seeds) * Constant.energy_for_multiply - plant_energy - soil;
+		data[PLANTS][i] = plants;
+		data[CORPSES][i] = corpses;
+		data[SOIL][i] = soil;
 		data[BIRTHS][i] = Ledger.births;
 		data[DEATHS][i] = Ledger.deaths_total();
 		data[MUTATIONS][i] = Ledger.mutations;
 		for (int c = 0; c < Ledger.die_names.length; c++) {
-			data[DEATH_CAUSE0 + c][i] = Ledger.deaths[c];
+			data[death_index(c)][i] = Ledger.deaths[c];
 		}
 		data[UNIQUE][i] = KinClans.unique_genomes;
 		data[CLANS][i] = KinClans.clans;
