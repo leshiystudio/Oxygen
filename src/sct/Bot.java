@@ -159,8 +159,14 @@ public class Bot extends BotSuper {
 					oxygen_map[xpos][ypos] -= Constant.life_ox_coeff * count;
 					co2_map[xpos][ypos] += Constant.life_co2_coeff * count;
 					update_commands(iterator);//если хватило кислорода, выполняем команды
+					if (killed == 1) {//погиб при делении: дальше тик не продолжаем
+						return(0);
+					}
 					if (energy >= Constant.energy_for_auto_multiply) {//автоматическое деление
 						multiply(rotate, 0, 0, 0, false, iterator);
+						if (killed == 1) {
+							return(0);
+						}
 					}
 				}
 				update_chain();//обновление цепочек
@@ -178,7 +184,7 @@ public class Bot extends BotSuper {
 			}else if (state == 1){//если семечко
 				if (org_map[xpos][ypos] >= Constant.org_die_level) {//умираем от переизбытка органики
 					die_with_organics();
-					org_map[xpos][ypos]-=0.1;
+					org_map[xpos][ypos] = Math.max(0, org_map[xpos][ypos] - 0.1);
 					return(0);
 				}
 				//
@@ -207,6 +213,9 @@ public class Bot extends BotSuper {
 		int max_mind = Constant.mind_size;
 		int max_genom = Constant.mind_count;
 		for (int i = 0; i < 5; i++) {
+			if (killed == 1) {//погиб на предыдущей команде
+				return;
+			}
 			int command = commands[index];
 			if(queen_command > -1 && queen == 2 && queen_bot != null && queen_bot.killed == 0) {//пришел приказ от королевы и мы являемся подчиненным
 				command = queen_command;
@@ -226,9 +235,10 @@ public class Bot extends BotSuper {
 				//if (sector <= 7 && pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
 				if (pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
 					pht_org_block = 1;
-					energy += photo_energy(sector);
+					double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
+					energy += pe;
 					go_green();
-					oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * photo_energy(sector);
+					oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
 //					if (oxygen_map[xpos][ypos] > 1) {
 //						oxygen_map[xpos][ypos] = 1;
 //					}
@@ -606,6 +616,7 @@ public class Bot extends BotSuper {
 				Bot victim = map[pos[0]][pos[1]];
 				if (victim != null) {
 					energy += victim.energy;
+					victim.energy = 0;//энергию забрал хищник: в органику уходит только тело
 					victim.die_with_organics();
 					go_red();
 				}
@@ -989,12 +1000,20 @@ public class Bot extends BotSuper {
 	//ТЕХНИЧЕСКИЕ ФУНКЦИИ
 	//
 	public double count_oxygen() {
-		double ox = oxygen_map[xpos][ypos] * (oxygen_map[xpos][ypos] / (oxygen_map[xpos][ypos] + co2_map[xpos][ypos]));
+		double sum = oxygen_map[xpos][ypos] + co2_map[xpos][ypos];
+		if (sum <= 0) {//оба газа кончились: без проверки 0/0 = NaN и мозг молча отключается
+			return(0);
+		}
+		double ox = oxygen_map[xpos][ypos] * (oxygen_map[xpos][ypos] / sum);
 		return(ox);
 	}
 	//
 	public double count_co2() {
-		double co2 = co2_map[xpos][ypos] * (co2_map[xpos][ypos] / (oxygen_map[xpos][ypos] + co2_map[xpos][ypos]));
+		double sum = oxygen_map[xpos][ypos] + co2_map[xpos][ypos];
+		if (sum <= 0) {
+			return(0);
+		}
+		double co2 = co2_map[xpos][ypos] * (co2_map[xpos][ypos] / sum);
 		return(co2);
 	}
 	//
@@ -1002,17 +1021,15 @@ public class Bot extends BotSuper {
 		int distance = 2;
 		int count = bot_count(2);
 		int count_org = 0;
-		double n = ((9*distance - count) * Constant.pht_neighbours_coeff);
-		if (n > 1) {
-			n = 1;
-		}
+		//в плотной колонии (count > 9*distance) множитель уходил в минус и фотосинтез отнимал энергию
+		double n = Constant.border((9*distance - count) * Constant.pht_neighbours_coeff, 1.0, 0.0);
 		for (int i = 0; i < 8; i++) {
 			for (int d = 1; d <= 3; d++) { //дистанция 
 				int[] pos = get_rotate_position(i,d);
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 					if (org_map[pos[0]][pos[1]] > 0) {
 						count_org++;
-						org_map[pos[0]][pos[1]] -= 0.0001;
+						org_map[pos[0]][pos[1]] = Math.max(0, org_map[pos[0]][pos[1]] - 0.0001);
 					}
 				}				
 			}
@@ -1053,22 +1070,24 @@ public class Bot extends BotSuper {
 	}
 	//
 	public void die_with_organics() {//умереть с появлением органики
+		if (killed == 1) {//повторная смерть удваивала органику и выброс газов
+			return;
+		}
 		killed = 1;
 		map[xpos][ypos] = null;
-		double enr = Constant.energy_for_multiply / 9.0;
-		//double enr = energy / 9.0;
+		//закон сохранения: в органику уходит тело (energy_for_multiply, потраченное при рождении)
+		//и вся оставшаяся энергия клетки
+		double body = Constant.energy_for_multiply / 9.0;
+		double enr = (Constant.energy_for_multiply + Math.max(energy, 0)) / 9.0;
+		energy = 0;
 		for (int i = 0; i < 8; i++) {
 			int[] pos = get_rotate_position(i);
 			if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 				org_map[pos[0]][pos[1]] += enr;
 			}
 		}
-		if(state == 1) {//семечко
-			org_map[xpos][ypos] -= enr / 10;
-		}else {
-			org_map[xpos][ypos] += enr; ///+ Constant.energy_for_multiply;			
-		}
-		co2_map[xpos][ypos] += Constant.die_co2_coeff * enr;
+		org_map[xpos][ypos] += enr;
+		co2_map[xpos][ypos] += Constant.die_co2_coeff * body;//выброс газа — по массе тела, как раньше
 		oxygen_map[xpos][ypos] -= Constant.die_ox_coeff;
 		if (oxygen_map[xpos][ypos] < 0) {
 			oxygen_map[xpos][ypos] = 0;
