@@ -23,8 +23,8 @@ public class DrawBio {
 						canvas.fillRect(x * Constant.size, y * Constant.size, Constant.size, Constant.size);
 					}
 				}else {//зум 2.5x - 5x
-					int x = i + zoom_disp_pos[0] - w / 2;
-					int y = j + zoom_disp_pos[1] - h / 2;
+					int x = Constant.mod(i + zoom_disp_pos[0] - w / 2, Constant.world_scale[0]);//мир замкнут
+					int y = Constant.mod(j + zoom_disp_pos[1] - h / 2, Constant.world_scale[1]);
 					double ox = oxygen_map[x][y];
 					if (ox > Constant.ox_render_maximum_coeff) {
 						ox = Constant.ox_render_maximum_coeff;
@@ -52,8 +52,8 @@ public class DrawBio {
 					canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(0, 0, 0), gr / Constant.org_die_level));
 					canvas.fillRect(x * Constant.zoom_sizes[zoom], y * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
 				}else {//зум 2.5x - 5x
-					int x = i + zoom_disp_pos[0] - w / 2;
-					int y = j + zoom_disp_pos[1] - h / 2;
+					int x = Constant.mod(i + zoom_disp_pos[0] - w / 2, Constant.world_scale[0]);//мир замкнут
+					int y = Constant.mod(j + zoom_disp_pos[1] - h / 2, Constant.world_scale[1]);
 					double gr = Constant.border(org_map[x][y], Constant.org_die_level, 0);
 					canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(0, 0, 0), gr / Constant.org_die_level));
 					canvas.fillRect(i * Constant.zoom_sizes[zoom], j * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
@@ -85,11 +85,22 @@ public class DrawBio {
 						canvas.fillRect(x * Constant.size, y * Constant.size, Constant.size, Constant.size);
 					}
 				}else {//зум 2.5x - 5x
-					int x = i + zoom_disp_pos[0] - w / 2;
-					int y = j + zoom_disp_pos[1] - h / 2;
+					int x = Constant.mod(i + zoom_disp_pos[0] - w / 2, Constant.world_scale[0]);//мир замкнут
+					int y = Constant.mod(j + zoom_disp_pos[1] - h / 2, Constant.world_scale[1]);
 					double gr = Constant.border(org_map[x][y], Constant.org_die_level, 0);
 					canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(0, 0, 0), gr / Constant.org_die_level));
 					canvas.fillRect(i * Constant.zoom_sizes[zoom], j * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
+
+					double ox = oxygen_map[x][y];
+					if (ox > Constant.ox_render_maximum_coeff) {
+						ox = Constant.ox_render_maximum_coeff;
+					}
+					canvas.setColor(Constant.gradient(new Color(255, 255, 255, 0), new Color(128, 128, 255, 210), ox * (1 / Constant.ox_render_maximum_coeff)));
+					canvas.fillRect(i * Constant.zoom_sizes[zoom], j * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
+					if (org_map[x][y] >= Constant.org_die_level) {
+						canvas.setColor(new Color(90, 0, 0));
+						canvas.fillRect(i * Constant.zoom_sizes[zoom], j * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
+					}
 				}
 			}
 		}
@@ -114,13 +125,13 @@ public class DrawBio {
 						canvas.fillRect(x * Constant.size, y * Constant.size, Constant.size, Constant.size);
 					}
 				}else {//зум 2.5x - 5x
-					int x = i + zoom_disp_pos[0] - w / 2;
-					int y = j + zoom_disp_pos[1] - h / 2;
+					int x = Constant.mod(i + zoom_disp_pos[0] - w / 2, Constant.world_scale[0]);//мир замкнут
+					int y = Constant.mod(j + zoom_disp_pos[1] - h / 2, Constant.world_scale[1]);
 					double co2 = co2_map[x][y];
 					if (co2 > Constant.co2_render_maximum_coeff) {
 						co2 = Constant.co2_render_maximum_coeff;
 					}
-					canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(128, 255, 128), co2 * (1 / Constant.co2_render_maximum_coeff)));
+					canvas.setColor(Constant.gradient(new Color(255, 255, 255), new Color(255, 128, 128), co2 * (1 / Constant.co2_render_maximum_coeff)));
 					canvas.fillRect(i * Constant.zoom_sizes[zoom], j * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
 					if (org_map[x][y] >= Constant.org_die_level) {
 						canvas.setColor(new Color(90, 0, 0));
@@ -162,8 +173,8 @@ public class DrawBio {
 						canvas.fillRect(x * Constant.zoom_sizes[zoom], y * Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom], Constant.zoom_sizes[zoom]);
 					}
 				}else {//зум 2.5x - 5x
-					int x = i + zoom_disp_pos[0] - w / 2;
-					int y = j + zoom_disp_pos[1] - h / 2;
+					int x = Constant.mod(i + zoom_disp_pos[0] - w / 2, Constant.world_scale[0]);//мир замкнут
+					int y = Constant.mod(j + zoom_disp_pos[1] - h / 2, Constant.world_scale[1]);
 					int gr = Constant.border(255 - (int)(height_map[x][y] / 1000.0 * 255), 255, 0);
 					if (gr < 255) {
 						canvas.setColor(new Color(gr, gr, gr));

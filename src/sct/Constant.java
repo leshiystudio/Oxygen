@@ -102,10 +102,11 @@ public class Constant {
 		return(pos);
 	}
 	public static Color gradient(Color color1, Color color2, double grad) {
-		int r = Constant.mod((int)(color1.getRed() * (1 - grad) + color2.getRed() * grad),256);
-		int g = Constant.mod((int)(color1.getGreen() * (1 - grad) + color2.getGreen() * grad),256);
-		int b = Constant.mod((int)(color1.getBlue() * (1 - grad) + color2.getBlue() * grad),256);
-		int a = (int) Constant.border((color1.getAlpha() * (1 - grad) + color2.getAlpha() * grad)%256,255,0);
+		grad = Constant.border(grad, 1.0, 0.0);//за пределами 0..1 цвет по модулю 256 перескакивал на противоположный
+		int r = (int)(color1.getRed() * (1 - grad) + color2.getRed() * grad);
+		int g = (int)(color1.getGreen() * (1 - grad) + color2.getGreen() * grad);
+		int b = (int)(color1.getBlue() * (1 - grad) + color2.getBlue() * grad);
+		int a = (int)(color1.getAlpha() * (1 - grad) + color2.getAlpha() * grad);
 		return(new Color(r, g, b, a));
 	}
 	public static int mod(int a, int b) {
