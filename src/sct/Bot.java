@@ -662,9 +662,37 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
+	private void pass_crown() {//наследница — соседняя подчиненная с наибольшей энергией, колония переходит к ней
+		Bot[] heir_box = {null};
+		walk_chain(this, 0, 1, n -> n.queen == 2 && n.queen_bot == this, (n, parent, d) -> {
+			if (heir_box[0] == null || n.energy > heir_box[0].energy) {
+				heir_box[0] = n;
+			}
+		});
+		Bot heir = heir_box[0];
+		if (heir == null) {
+			return;
+		}
+		Bot old_queen = this;
+		heir.queen = 1;
+		heir.queen_bot = null;
+		heir.queen_command = -1;
+		walk_chain(heir, 0, Constant.queen_max_radius, n -> n.queen == 2 && n.queen_bot == old_queen, (n, parent, d) -> {
+			n.queen_bot = heir;
+		});
+		//подчиненные старой королевы дальше радиуса от наследницы остаются без королевы и гибнут (Update)
+	}
+	//
+	public void queen_mark(Graphics2D g) {//королева поверх линий и цепочек: белая рамка и синий центр
+		g.setColor(Color.white);
+		g.fillRect(x - 2, y - 2, Constant.size + 4, Constant.size + 4);
+		g.setColor(new Color(0, 50, 250));
+		g.fillRect(x - 1, y - 1, Constant.size + 2, Constant.size + 2);
+	}
+	//
 	public void queen_draw(Graphics2D g) {//линии от каждой подчиненной к той клетке, через которую она связана с королевой
 		g.setStroke(new BasicStroke(1f));
-		g.setColor(new Color(0, 50, 250));
+		g.setColor(new Color(40, 40, 120, 130));//полупрозрачные, чтобы не сливались с королевой
 		walk_chain(this, 0, Constant.queen_max_radius, n -> n.queen == 2 && n.queen_bot == this, (n, parent, d) -> {
 			if (Math.abs(n.xpos - parent.xpos) > 1 || Math.abs(n.ypos - parent.ypos) > 1) {
 				return;//связь через край замкнутого мира — линию через весь экран не рисуем
@@ -945,6 +973,9 @@ public class Bot extends BotSuper {
 			return;
 		}
 		killed = 1;
+		if (queen == 1) {//корона переходит наследнице, иначе вся колония гибнет вместе с королевой
+			pass_crown();
+		}
 		map[xpos][ypos] = null;
 		//закон сохранения: в органику уходит тело (energy_for_multiply, потраченное при рождении)
 		//и вся оставшаяся энергия клетки

@@ -175,6 +175,11 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 						b.queen_draw(g2dTail);
 					}
 				}
+				for(Bot b: objects) {//королевы поверх линий, чтобы их было видно
+					if (b.queen == 1 && b.killed == 0) {
+						b.queen_mark(g2dTail);
+					}
+				}
 			}
 			if (selection != null) {//выбранный бот
 				g2dTail.setColor(Color.RED);
