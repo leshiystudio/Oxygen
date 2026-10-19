@@ -604,6 +604,9 @@ public class Plant extends BotSuper {
 				add_energy(sun);
 			}
 			add_health(hp);
+			if (c.leaf_uses_co2) {
+				leaf_co2();
+			}
 		}
 		if (t == LEAF || t == TRANS) {
 			for (int d = 0; d < 8; d++) {
@@ -644,6 +647,37 @@ public class Plant extends BotSuper {
 			}
 		}
 		return true;
+	}
+	//зависимость от газов Oxygen: лист вытягивает CO2 из своей клетки и 8 соседних, получает бонус
+	//энергии и выделяет кислород. Газов нет (карт нет, ботов нет, CO2 рассеялся) — бонус просто 0.
+	void leaf_co2() {
+		PlantConfig c = w.c;
+		double[][] co2 = w.co2;
+		if (co2 == null || c.leaf_co2_draw <= 0) {
+			return;
+		}
+		double absorbed = 0;
+		for (int d = -1; d < 8; d++) {
+			int x = d < 0 ? xpos : nx(d);
+			int y = d < 0 ? ypos : ny(d);
+			double g = co2[x][y];
+			double take = g > c.leaf_co2_draw ? c.leaf_co2_draw : g;
+			if (take > 0) {
+				co2[x][y] = g - take;
+				absorbed += take;
+			}
+		}
+		if (absorbed <= 0) {
+			return;
+		}
+		if (w.oxygen != null && c.leaf_o2_per_co2 > 0) {
+			w.oxygen[xpos][ypos] += absorbed * c.leaf_o2_per_co2;
+		}
+		long bonus = (long)(absorbed * c.leaf_co2_energy);
+		if (bonus > 0) {
+			Ledger.in_plant_co2 += bonus;
+			add_energy(bonus);
+		}
 	}
 	void lifecycle() {
 		PlantConfig c = w.c;

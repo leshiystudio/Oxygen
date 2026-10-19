@@ -33,6 +33,7 @@ public class SelfTest {
 		interactions();
 		world_settings();
 		neuro();
+		leaves_use_co2();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -552,6 +553,59 @@ public class SelfTest {
 		}
 		Constant.bot_brain = "genome";
 		Constant.plant_brain = "";
+		Constant.starting_plant_count = 0;
+		Presets.seed = -1;
+	}
+	//
+	private static void leaves_use_co2() {
+		System.out.println("leaves use CO2:");
+		Presets.seed = 31;
+		Constant.starting_bot_count = 0;
+		Constant.starting_plant_count = 300;
+		double[] co2_end = new double[2];
+		for (int on = 0; on < 2; on++) {
+			sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+			sct.plants.PlantConfig.current.leaf_uses_co2 = on == 1;
+			WorldBio w = new WorldBio(false);
+			for (int i = 0; i < 200; i++) {
+				w.step();
+			}
+			co2_end[on] = Ledger.sum(w.co2_map);
+			if (on == 1) {
+				check("plants with CO2 bonus live (" + w.plant_count + " cells)", w.plant_count > 0);
+				check("energy balance is exact with CO2 bonus (" + Ledger.total_diff + ")", Ledger.total_diff == 0);
+			}
+		}
+		check("leaves pull CO2 out of the air", co2_end[1] < co2_end[0]);
+		//без карт газов и без CO2 — не падает, бонуса нет
+		WorldBio w = empty_world();
+		sct.plants.PlantConfig cfg = new sct.plants.PlantConfig();
+		cfg.leaf_uses_co2 = true;
+		sct.plants.PlantWorld no_gas = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.objects, cfg);
+		sct.plants.Plant leaf = sct.plants.Plant.seedling(no_gas, 5, 5, sct.plants.ThinkNew.instance);
+		leaf.type = sct.plants.Plant.LEAF;
+		w.objects.add(leaf);
+		w.Map[5][5] = leaf;
+		boolean ok = true;
+		try {
+			leaf.Update(null);
+		}catch (RuntimeException e) {
+			ok = false;
+		}
+		check("leaf without gas maps does not crash", ok);
+		for (double[] row : w.co2_map) {
+			java.util.Arrays.fill(row, 0);
+		}
+		sct.plants.PlantWorld zero_gas = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.co2_map, w.oxygen_map, w.objects, cfg);
+		sct.plants.Plant leaf2 = sct.plants.Plant.seedling(zero_gas, 9, 9, sct.plants.ThinkNew.instance);
+		leaf2.type = sct.plants.Plant.LEAF;
+		w.objects.add(leaf2);
+		w.Map[9][9] = leaf2;
+		Ledger.begin_step();
+		leaf2.Update(null);
+		check("no CO2 — no bonus", Ledger.in_plant_co2 == 0);
+		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+		Constant.starting_bot_count = 300;
 		Constant.starting_plant_count = 0;
 		Presets.seed = -1;
 	}

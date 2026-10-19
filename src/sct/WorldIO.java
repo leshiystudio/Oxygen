@@ -143,7 +143,7 @@ public class WorldIO {
 				Population p = pops.get(i);
 				p.id = i;
 				if (p.species == Species.PLANT) {
-					p.plant_world = new PlantWorld(map, org, mnr, objects, p.plant_config);
+					p.plant_world = new PlantWorld(map, org, mnr, co2, ox, objects, p.plant_config);
 					p.plant_world.pop = p;
 					p.plant_brain = Brains.make_plant_brain(p);
 					if (first_plants == null) {

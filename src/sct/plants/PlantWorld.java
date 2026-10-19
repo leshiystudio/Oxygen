@@ -13,12 +13,19 @@ public class PlantWorld {
 	public final IBot[][] grid;//общая сетка мира
 	public final double[][] org;//общая органика (у biosim — SOIL[:, 1])
 	public final double[][] soil;//энергия почвы (у biosim — SOIL[:, 0]) = слой минералов мира
+	public final double[][] co2;//газы мира Oxygen — для leaf_uses_co2; null — газов нет, бонуса нет
+	public final double[][] oxygen;
 	public final List<IBot> objects;//список мира — для рождения вне хода (инструменты, тесты)
 	public final PlantConfig c;
 	public sct.Population pop;//популяция этих растений (свои настройки и действия)
 	public final int W, H;
 
 	public PlantWorld(IBot[][] grid, double[][] org, double[][] soil, List<IBot> objects, PlantConfig c) {
+		this(grid, org, soil, null, null, objects, c);
+	}
+	public PlantWorld(IBot[][] grid, double[][] org, double[][] soil, double[][] co2, double[][] oxygen, List<IBot> objects, PlantConfig c) {
+		this.co2 = co2;
+		this.oxygen = oxygen;
 		this.grid = grid;
 		this.org = org;
 		this.soil = soil;

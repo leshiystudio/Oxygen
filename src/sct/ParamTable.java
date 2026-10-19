@@ -26,7 +26,21 @@ public class ParamTable extends JPanel {
 			return col == 1;
 		}
 	};
-	private final JTable table = new JTable(model);
+	private final JTable table = new JTable(model) {//true/false — галочкой
+		private static final long serialVersionUID = 1L;
+		public javax.swing.table.TableCellRenderer getCellRenderer(int row, int col) {
+			if (col == 1 && getValueAt(row, col) instanceof Boolean) {
+				return getDefaultRenderer(Boolean.class);
+			}
+			return super.getCellRenderer(row, col);
+		}
+		public javax.swing.table.TableCellEditor getCellEditor(int row, int col) {
+			if (col == 1 && getValueAt(row, col) instanceof Boolean) {
+				return getDefaultEditor(Boolean.class);
+			}
+			return super.getCellEditor(row, col);
+		}
+	};
 	private final JTextField filter = new JTextField();
 
 	public ParamTable() {
@@ -53,7 +67,8 @@ public class ParamTable extends JPanel {
 		stop_editing();
 		model.setRowCount(0);
 		for (String[] r : rows) {
-			model.addRow(new Object[]{r[0], r[1]});
+			Object v = r[1].equals("true") ? Boolean.TRUE : r[1].equals("false") ? Boolean.FALSE : r[1];
+			model.addRow(new Object[]{r[0], v});
 		}
 	}
 	public Map<String, String> values() {

@@ -40,6 +40,7 @@ public class Ledger {
 	//растения (журнал biosim)
 	public static double in_plant_sun;//фотосинтез листьев
 	public static double in_plant_health;//здоровье, переведенное в энергию
+	public static double in_plant_co2;//бонус листьев за CO2 (leaf_uses_co2)
 	public static double out_plant_step;//плата за ход
 	public static double out_plant_punish;//штраф THINK_OLD
 	public static double out_plant_birth;//цена рождения
@@ -66,6 +67,7 @@ public class Ledger {
 		out_org_other = 0;
 		in_plant_sun = 0;
 		in_plant_health = 0;
+		in_plant_co2 = 0;
 		out_plant_step = 0;
 		out_plant_punish = 0;
 		out_plant_birth = 0;
@@ -78,7 +80,7 @@ public class Ledger {
 	}
 	//
 	public static double in_step() {
-		return in_sun + in_negative + in_plant_sun + in_plant_health + in_mineral_influx + in_exchange;
+		return in_sun + in_negative + in_plant_sun + in_plant_health + in_plant_co2 + in_mineral_influx + in_exchange;
 	}
 	public static double out_step() {
 		return out_life + out_move + out_cap + out_birth_fail + out_org_clamp + out_org_other

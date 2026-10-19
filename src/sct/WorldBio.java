@@ -450,7 +450,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 					}
 				}
 			}
-			sct.plants.PlantWorld pw = new sct.plants.PlantWorld(Map, org_map, mnr_map, objects, c);
+			sct.plants.PlantWorld pw = new sct.plants.PlantWorld(Map, org_map, mnr_map, co2_map, oxygen_map, objects, c);
 			pw.pop = p;
 			p.plant_world = pw;
 			if (plants == null) {
