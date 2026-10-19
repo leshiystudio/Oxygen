@@ -13,7 +13,7 @@ public class PlantWorld {
 	public final IBot[][] grid;//общая сетка мира
 	public final double[][] org;//общая органика (у biosim — SOIL[:, 1])
 	public final double[][] soil;//энергия почвы (у biosim — SOIL[:, 0]) = слой минералов мира
-	public final double[][] co2;//газы мира Oxygen — для leaf_uses_co2; null — газов нет, бонуса нет
+	public final double[][] co2;//газы мира Oxygen — для действия absorb_co2; null — газов нет, действие не удается
 	public final double[][] oxygen;
 	public final List<IBot> objects;//список мира — для рождения вне хода (инструменты, тесты)
 	public final PlantConfig c;

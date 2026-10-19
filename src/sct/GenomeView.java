@@ -345,7 +345,7 @@ public class GenomeView extends JDialog {
 	private static final String[] checks = {"occupied left", "occupied ahead", "occupied right", "free left, ahead and right",
 		"energy for two children", "alien ahead", "own ahead"};
 	private static final String[] todos = {"shift soil energy left", "shift soil energy ahead", "shift soil energy right",
-		"eat aliens around", "move ahead", "turn left", "turn right", "mutate (chance)"};
+		"eat aliens around", "move ahead", "turn left", "turn right", "mutate (chance)", "absorb CO2 around (energy)"};
 	private static final Color C_UNUSED = new Color(45, 45, 50), C_CHECK = new Color(120, 100, 160), C_BIRTH_MODE = new Color(90, 90, 100),
 		C_ACTION = new Color(60, 150, 90), C_JUMP = new Color(60, 100, 170);
 	private static final int[] plant_palette = {0x333338, 0xA0AAAA, 0xBE320A, 0xE6830A, 0x0AB01A, 0x6E3BFF};

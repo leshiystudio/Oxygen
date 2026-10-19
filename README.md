@@ -90,7 +90,12 @@ java -cp out sct.Main --set starting_plant_count=1500 --set plant_preset=origina
 Параметры — поля `PlantConfig` (имена как в `config.py` biosim): `--set plant.<имя>=<значение>`.
 Наборы biosim: `--set plant_preset=config|original|noleak|balanced` (раньше, чем `plant.<имя>`).
 Мозг: `plant.think_mode=0` (THINK_NEW) или `1` (THINK_OLD). Действия ростка выключаются:
-`--set plant_actions_off=eat,move`. Сохранение мира с растениями — в следующем этапе.
+`--set plant_actions_off=eat,move`.
+
+Связь с газами Oxygen — действие ростка **`absorb_co2`**: вытянуть CO2 из своей клетки и 8 соседних,
+получить энергию (`plant.absorb_co2_energy` за единицу CO2) и выделить кислород. Нет газа — действие
+не удается, без ошибок. Доступно нейросети и своим алгоритмам; `think_new` — при `plant.todo_mod=9`
+(по умолчанию 8 — правила biosim не меняются); выключается галочкой популяции. Сохранение мира с растениями — в следующем этапе.
 
 ## Нейросеть (NeuroBot, NeuroPlant)
 

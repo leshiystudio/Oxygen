@@ -62,6 +62,7 @@ public class ThinkNew implements Brain<Plant> {
 			case 5: return PlantAction.TURN.run(p, it, 0);
 			case 6: return PlantAction.TURN.run(p, it, 2);
 			case 7: return PlantWorld.rand.nextDouble() < p.w.c.percent_mutation_am && PlantAction.MUTATE.run(p, it, 1);
+			case 8: return PlantAction.ABSORB_CO2.run(p, it);//только при todo_mod >= 9
 			default: return false;
 		}
 	}

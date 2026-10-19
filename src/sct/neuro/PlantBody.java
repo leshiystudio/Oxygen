@@ -22,7 +22,7 @@ public class PlantBody implements NeuroBody<Plant> {
 
 	private PlantBody() {
 		List<String> in = new ArrayList<String>();
-		for (String s : new String[]{"energy", "health", "age", "soil", "organics"}) {
+		for (String s : new String[]{"energy", "health", "age", "soil", "organics", "co2 around"}) {
 			in.add(s);
 		}
 		for (int k = 0; k < 7; k++) {
@@ -51,6 +51,7 @@ public class PlantBody implements NeuroBody<Plant> {
 		out[k++] = c.max_age > 0 ? (float) p.age / c.max_age : 0f;
 		out[k++] = (float)(p.w.soil[p.xpos][p.ypos] / Math.max(1, c.max_energy_around));
 		out[k++] = (float)(p.w.org[p.xpos][p.ypos] / 1000.0);
+		out[k++] = (float)(p.co2_around() / (9 * sct.Constant.co2_render_maximum_coeff));
 		for (int check = 0; check < 7; check++) {
 			out[k++] = p.check(check) ? 1f : 0f;
 		}

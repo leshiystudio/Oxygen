@@ -79,11 +79,12 @@ public class PlantConfig {
 	public int trans_leaf_bonus = 25;
 	public int trans_leaf_health = 45;
 	public int root_feed = 5;
-	//--- зависимость от газов Oxygen (не из biosim; по умолчанию выключена) ---
-	public boolean leaf_uses_co2 = false;//лист вытягивает CO2 из клеток 3x3 и получает бонус энергии
-	public double leaf_co2_draw = 0.0003;//сколько CO2 лист забирает из каждой клетки 3x3 за ход (не больше, чем там есть)
-	public double leaf_co2_energy = 5000;//энергии за единицу CO2: бонус = floor(забрано * коэффициент)
-	public double leaf_o2_per_co2 = 1.0;//кислорода выделяется на единицу забранного CO2 (0 — не выделять)
+	//--- действие absorb_co2: связь с газами Oxygen (не из biosim) ---
+	//Росток вытягивает CO2 из своей клетки и 8 соседних и получает энергию. Доступно нейросети и своим
+	//алгоритмам; think_new — только при todo_mod >= 9 (действие номер 8), по умолчанию правила biosim не меняются.
+	public double absorb_co2_draw = 0.0003;//сколько CO2 действие забирает из каждой клетки 3x3 (не больше, чем там есть)
+	public double absorb_co2_energy = 5000;//энергии за единицу CO2: floor(забрано * коэффициент)
+	public double absorb_o2_per_co2 = 1.0;//кислорода выделяется на единицу забранного CO2 (0 — не выделять)
 	//--- органика (трупы) ---
 	public double corpse_share = 0.3;//доля энергии, остающаяся в трупе (остальное — в почву)
 	public int corpse_decay = 50;//сколько энергии труп отдает в органику за тик

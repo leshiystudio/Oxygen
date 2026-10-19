@@ -604,9 +604,6 @@ public class Plant extends BotSuper {
 				add_energy(sun);
 			}
 			add_health(hp);
-			if (c.leaf_uses_co2) {
-				leaf_co2();
-			}
 		}
 		if (t == LEAF || t == TRANS) {
 			for (int d = 0; d < 8; d++) {
@@ -648,36 +645,47 @@ public class Plant extends BotSuper {
 		}
 		return true;
 	}
-	//зависимость от газов Oxygen: лист вытягивает CO2 из своей клетки и 8 соседних, получает бонус
-	//энергии и выделяет кислород. Газов нет (карт нет, ботов нет, CO2 рассеялся) — бонус просто 0.
-	void leaf_co2() {
+	//действие absorb_co2 (связь с газами Oxygen): вытянуть CO2 из своей клетки и 8 соседних,
+	//получить энергию и выделить кислород. Газов нет (карт нет, ботов нет, CO2 рассеялся) — «не удалось».
+	boolean absorb_co2() {
 		PlantConfig c = w.c;
 		double[][] co2 = w.co2;
-		if (co2 == null || c.leaf_co2_draw <= 0) {
-			return;
+		if (co2 == null || c.absorb_co2_draw <= 0) {
+			return false;
 		}
 		double absorbed = 0;
 		for (int d = -1; d < 8; d++) {
 			int x = d < 0 ? xpos : nx(d);
 			int y = d < 0 ? ypos : ny(d);
 			double g = co2[x][y];
-			double take = g > c.leaf_co2_draw ? c.leaf_co2_draw : g;
+			double take = g > c.absorb_co2_draw ? c.absorb_co2_draw : g;
 			if (take > 0) {
 				co2[x][y] = g - take;
 				absorbed += take;
 			}
 		}
 		if (absorbed <= 0) {
-			return;
+			return false;
 		}
-		if (w.oxygen != null && c.leaf_o2_per_co2 > 0) {
-			w.oxygen[xpos][ypos] += absorbed * c.leaf_o2_per_co2;
+		if (w.oxygen != null && c.absorb_o2_per_co2 > 0) {
+			w.oxygen[xpos][ypos] += absorbed * c.absorb_o2_per_co2;
 		}
-		long bonus = (long)(absorbed * c.leaf_co2_energy);
-		if (bonus > 0) {
-			Ledger.in_plant_co2 += bonus;
-			add_energy(bonus);
+		long gain = (long)(absorbed * c.absorb_co2_energy);
+		if (gain > 0) {
+			Ledger.in_plant_co2 += gain;
+			add_energy(gain);
 		}
+		return true;
+	}
+	public double co2_around() {//CO2 в клетке и 8 соседних — датчик для нейросети и своих алгоритмов
+		if (w.co2 == null) {
+			return 0;
+		}
+		double s = w.co2[xpos][ypos];
+		for (int d = 0; d < 8; d++) {
+			s += w.co2[nx(d)][ny(d)];
+		}
+		return s;
 	}
 	void lifecycle() {
 		PlantConfig c = w.c;

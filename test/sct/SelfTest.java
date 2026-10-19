@@ -558,52 +558,53 @@ public class SelfTest {
 	}
 	//
 	private static void leaves_use_co2() {
-		System.out.println("leaves use CO2:");
-		Presets.seed = 31;
-		Constant.starting_bot_count = 0;
-		Constant.starting_plant_count = 300;
-		double[] co2_end = new double[2];
-		for (int on = 0; on < 2; on++) {
-			sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
-			sct.plants.PlantConfig.current.leaf_uses_co2 = on == 1;
-			WorldBio w = new WorldBio(false);
-			for (int i = 0; i < 200; i++) {
-				w.step();
-			}
-			co2_end[on] = Ledger.sum(w.co2_map);
-			if (on == 1) {
-				check("plants with CO2 bonus live (" + w.plant_count + " cells)", w.plant_count > 0);
-				check("energy balance is exact with CO2 bonus (" + Ledger.total_diff + ")", Ledger.total_diff == 0);
-			}
-		}
-		check("leaves pull CO2 out of the air", co2_end[1] < co2_end[0]);
-		//без карт газов и без CO2 — не падает, бонуса нет
+		System.out.println("absorb_co2 action:");
 		WorldBio w = empty_world();
 		sct.plants.PlantConfig cfg = new sct.plants.PlantConfig();
-		cfg.leaf_uses_co2 = true;
+		sct.plants.PlantWorld pw = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.co2_map, w.oxygen_map, w.objects, cfg);
+		sct.plants.Plant sprout = sct.plants.Plant.seedling(pw, 10, 10, sct.plants.ThinkNew.instance);
+		w.objects.add(sprout);
+		w.Map[10][10] = sprout;
+		double co2_before = Ledger.sum(w.co2_map), ox_before = w.oxygen_map[10][10];
+		int e_before = sprout.energy;
+		Ledger.begin_step();
+		boolean ok = sct.plants.PlantAction.ABSORB_CO2.run(sprout, null);
+		check("sprout absorbs CO2 around", ok && Ledger.sum(w.co2_map) < co2_before);
+		check("and gets energy (ledger item)", sprout.energy > e_before && Ledger.in_plant_co2 == sprout.energy - e_before);
+		check("and releases oxygen", w.oxygen_map[10][10] > ox_before);
+		//без карт газов и без CO2 — «не удалось», без ошибок
 		sct.plants.PlantWorld no_gas = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.objects, cfg);
-		sct.plants.Plant leaf = sct.plants.Plant.seedling(no_gas, 5, 5, sct.plants.ThinkNew.instance);
-		leaf.type = sct.plants.Plant.LEAF;
-		w.objects.add(leaf);
-		w.Map[5][5] = leaf;
-		boolean ok = true;
-		try {
-			leaf.Update(null);
-		}catch (RuntimeException e) {
-			ok = false;
-		}
-		check("leaf without gas maps does not crash", ok);
+		sct.plants.Plant s2 = sct.plants.Plant.seedling(no_gas, 20, 20, sct.plants.ThinkNew.instance);
+		w.Map[20][20] = s2;
+		boolean no_maps = sct.plants.PlantAction.ABSORB_CO2.run(s2, null);
 		for (double[] row : w.co2_map) {
 			java.util.Arrays.fill(row, 0);
 		}
-		sct.plants.PlantWorld zero_gas = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.co2_map, w.oxygen_map, w.objects, cfg);
-		sct.plants.Plant leaf2 = sct.plants.Plant.seedling(zero_gas, 9, 9, sct.plants.ThinkNew.instance);
-		leaf2.type = sct.plants.Plant.LEAF;
-		w.objects.add(leaf2);
-		w.Map[9][9] = leaf2;
-		Ledger.begin_step();
-		leaf2.Update(null);
-		check("no CO2 — no bonus", Ledger.in_plant_co2 == 0);
+		boolean no_co2 = sct.plants.PlantAction.ABSORB_CO2.run(sprout, null);
+		check("no gas maps or no CO2 — action fails, no crash", !no_maps && !no_co2);
+		//think_new выбирает действие только при todo_mod >= 9; галочка выключает
+		Presets.seed = 31;
+		Constant.starting_bot_count = 0;
+		Constant.starting_plant_count = 300;
+		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+		sct.plants.PlantConfig.current.todo_mod = 9;
+		WorldBio world = new WorldBio(false);
+		double gained = 0;
+		for (int i = 0; i < 200; i++) {
+			world.step();
+			gained += Ledger.in_plant_co2;
+		}
+		check("think_new with todo_mod=9 uses absorb_co2 (" + (long) gained + " energy)", gained > 0);
+		check("energy balance is exact with absorb_co2 (" + Ledger.total_diff + ")", Ledger.total_diff == 0);
+		Constant.plant_actions_off = "absorb_co2";
+		world = new WorldBio(false);
+		gained = 0;
+		for (int i = 0; i < 100; i++) {
+			world.step();
+			gained += Ledger.in_plant_co2;
+		}
+		check("disabled absorb_co2 gives nothing", gained == 0);
+		Constant.plant_actions_off = "";
 		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
 		Constant.starting_bot_count = 300;
 		Constant.starting_plant_count = 0;

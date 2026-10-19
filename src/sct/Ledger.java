@@ -40,7 +40,7 @@ public class Ledger {
 	//растения (журнал biosim)
 	public static double in_plant_sun;//фотосинтез листьев
 	public static double in_plant_health;//здоровье, переведенное в энергию
-	public static double in_plant_co2;//бонус листьев за CO2 (leaf_uses_co2)
+	public static double in_plant_co2;//энергия растений за CO2 (действие absorb_co2)
 	public static double out_plant_step;//плата за ход
 	public static double out_plant_punish;//штраф THINK_OLD
 	public static double out_plant_birth;//цена рождения

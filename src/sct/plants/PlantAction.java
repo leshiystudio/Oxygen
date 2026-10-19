@@ -45,6 +45,9 @@ public enum PlantAction implements Action<Plant> {
 			}
 			return p.reproduce(dirs, types, n, it) > 0;
 		}
+	},
+	ABSORB_CO2("absorb_co2", "energy") {//вытянуть CO2 из клеток 3x3 (газы Oxygen) и получить энергию
+		protected boolean act(Plant p, ListIterator<IBot> it, int[] a) { return p.absorb_co2(); }
 	};
 	//
 	private static final boolean[] on = new boolean[values().length];
