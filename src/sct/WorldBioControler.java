@@ -1,5 +1,6 @@
 package sct;
 
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
@@ -317,23 +318,38 @@ public class WorldBioControler extends JPanel{
 			tool_box.setSelectedIndex(world.tool_idx);
 		}
 
-        Bot s = world.selection;//выбранный бот
-        if (s != null) {
-        	label_sel_pos.setText("position: [" + s.xpos + ", " + s.ypos + "]");
+        IBot o = world.selection;//выбранное существо
+        IBot p = world.prev_selection;
+        String cmp = p != null && p != o && o != null ? (o.same_kin(p) ? ", vs prev: own" : ", vs prev: alien") : "";
+        if (o instanceof Bot s) {
+        	label_sel_pos.setText("[" + s.xpos + ", " + s.ypos + "] " + (s.pop != null ? s.pop.name : "bot"));
         	label_sel_energy.setText("energy: " + (int) s.energy + ", age: " + (int) s.age);
         	label_sel_type.setText("type: " + s.type + ", queen: " + s.queen + ", chains: " + s.count_chains());
-        	label_sel_genom.setText("genom: " + s.genom_current_idx + ", index: " + s.index);
-        	Bot p = world.prev_selection;
-        	String cmp = "";
-        	if (p != null && p != s) {
-        		int diff = s.count_different_genom(s.genom_array, p.genom_array);
+        	label_sel_genom.setText("brain: " + WorldBio.brain_name(s) + ", genom " + s.genom_current_idx + ", index " + s.index);
+        	if (p instanceof Bot pb && p != s && s.brain == null) {
+        		int diff = s.count_different_genom(s.genom_array, pb.genom_array);
         		cmp = ", vs prev: " + diff + (diff <= Constant.max_different_genom ? " own" : " alien");
         	}
         	label_sel_kin.setText("kin: " + s.kin_id + cmp);
         	sel_color_box.setBackground(s.color);
         	sel_color_box.setVisible(true);
+        }else if (o instanceof sct.plants.Plant s) {
+        	label_sel_pos.setText("[" + s.xpos + ", " + s.ypos + "] " + (s.pop != null ? s.pop.name : "plant"));
+        	label_sel_energy.setText("energy: " + s.energy + " (+" + (s.ina + s.inb) + "), health: " + s.health);
+        	label_sel_type.setText("cell: " + sct.plants.Plant.type_names[s.type] + ", age: " + s.age);
+        	label_sel_genom.setText("brain: " + WorldBio.brain_name(s) + ", gene " + s.gen + ", cmd " + s.cmd);
+        	label_sel_kin.setText("head " + s.head + ", parent dir " + s.dpar + cmp);
+        	sel_color_box.setBackground(new Color(s.color));
+        	sel_color_box.setVisible(true);
+        }else if (o != null) {
+        	label_sel_pos.setText(o.describe());
+        	label_sel_energy.setText("");
+        	label_sel_type.setText("");
+        	label_sel_genom.setText("");
+        	label_sel_kin.setText("");
+        	sel_color_box.setVisible(false);
         }else {
-        	label_sel_pos.setText("none (left click a bot)");
+        	label_sel_pos.setText("none (left click a cell)");
         	label_sel_energy.setText("");
         	label_sel_type.setText("");
         	label_sel_genom.setText("");

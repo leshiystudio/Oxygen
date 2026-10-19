@@ -44,17 +44,17 @@ public class PixelRenderer {
 					}
 				}
 			}
-			Bot sel = w.selection;
-			if (sel != null) {//выбранный бот
+			IBot sel = w.selection;
+			if (sel != null) {//выбранное существо
 				g.setColor(Color.RED);
 				g.setStroke(new BasicStroke(2));
-				g.drawRect(sel.xpos * s - 2, sel.ypos * s - 2, s + 4, s + 4);
+				g.drawRect(sel.cell_x() * s - 2, sel.cell_y() * s - 2, s + 4, s + 4);
 			}
-			Bot prev = w.prev_selection;
-			if (prev != null && prev.killed == 0) {//предыдущий выбранный — для сравнения геномов
+			IBot prev = w.prev_selection;
+			if (prev != null && prev.alive()) {//предыдущее выбранное — для сравнения геномов
 				g.setColor(Color.YELLOW);
 				g.setStroke(new BasicStroke(1));
-				g.drawRect(prev.xpos * s - 2, prev.ypos * s - 2, s + 4, s + 4);
+				g.drawRect(prev.cell_x() * s - 2, prev.cell_y() * s - 2, s + 4, s + 4);
 			}
 			g.dispose();
 		}

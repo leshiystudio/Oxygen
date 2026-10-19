@@ -62,8 +62,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	int obj_count = 0;//количество объектов
 	int org_count = 0;//количество семян
 	int population = 0;//номер популяции (сколько раз создавали мир)
-	volatile Bot selection = null;//выбранный бот
-	volatile Bot prev_selection = null;//предыдущий выбранный — для сравнения геномов
+	volatile IBot selection = null;//выбранное существо (бот, растение, нейро...)
+	volatile IBot prev_selection = null;//предыдущее выбранное — для сравнения геномов
 	int draw_type = 0;//режим отрисовки
 	int res_draw_type = 0;//режим отрисовки фона/ресурсов/окружения
 	//
@@ -156,6 +156,15 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	}
 	public void slower() {
 		speed_idx = Math.max(0, speed_idx - 1);
+	}
+	public static String brain_name(IBot o) {//имя мозга существа: genome, simple, neuro, think_new...
+		if (o instanceof Bot b) {
+			return b.brain == null ? "genome" : b.brain.name();
+		}
+		if (o instanceof sct.plants.Plant p) {
+			return p.brain == null ? "-" : p.brain.name();
+		}
+		return "-";
 	}
 	public String speed_name() {
 		int n = speed_levels[speed_idx];
@@ -315,16 +324,18 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	}
 
 	@Override
-	public void mouseClicked(MouseEvent e) {//ЛКМ — выбрать бота, ПКМ — текущий инструмент
+	public void mouseClicked(MouseEvent e) {//ЛКМ — выбрать существо, ПКМ — текущий инструмент
 		int[] c = world_cell(e);
 		lock.lock();
 		try {
 			IBot o = Map[c[0]][c[1]];
-			Bot b = o instanceof Bot && o.alive() ? (Bot) o : null;//выбор и инструменты — пока только для ботов (этап 4)
+			if (o != null && !o.alive()) {
+				o = null;
+			}
 			if (SwingUtilities.isRightMouseButton(e)) {
-				Tools.all[tool_idx].apply(this, b, c[0], c[1]);
+				Tools.all[tool_idx].apply(this, o, c[0], c[1]);
 			}else {
-				select(b);
+				select(o);
 			}
 		}finally {
 			lock.unlock();
@@ -342,7 +353,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		selection = null;
 		prev_selection = null;
 	}
-	public void select(Bot b) {
+	public void select(IBot b) {
 		if (b != selection) {
 			if (selection != null) {
 				prev_selection = selection;
@@ -545,7 +556,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		}
 		//
 		objects.removeIf(b -> !b.alive());//один проход вместо удаления по одному из середины списка
-		if (selection != null && selection.killed == 1) {
+		if (selection != null && !selection.alive()) {
 			selection = null;
 		}
 		Ledger.end_step(this);
