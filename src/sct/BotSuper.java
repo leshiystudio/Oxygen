@@ -10,6 +10,25 @@ public abstract class BotSuper implements IBot {
 	public int ypos;
 	public int killed = 0;//убито ли существо
 	public Population pop;//популяция (null — вне популяций)
+	//счетчики жизни — для отбора лучших при перезапуске мира (Elite); правил мира не меняют
+	public int life_steps;//сколько ходов прожил (живым)
+	public int life_children;//сколько потомков родил
+	public int life_generation;//глубина рода: у потомка — родитель + 1
+	public double life_energy;//сколько энергии добыл из мира (солнце, органика, почва, CO2, еда)
+	public int life_kills;//сколько существ съел
+	public double[] life_values() {//в порядке Elite.FIELDS
+		return new double[]{life_steps, life_children, life_energy, life_kills, life_generation};
+	}
+	public void inherit_life(BotSuper parent) {//потомок: глубина рода, счет у родителя
+		life_generation = parent.life_generation + 1;
+		parent.life_children++;
+	}
+	public boolean living() {//живое существо (у растения труп — не живое, хотя еще в мире)
+		return alive();
+	}
+	public Object heritage() {//снимок наследственности для клонов в новом мире (Elite); null — нечего переносить
+		return null;
+	}
 
 	public void Draw(Graphics canvas, int draw_type, int zoom, int[] pos) {
 	}

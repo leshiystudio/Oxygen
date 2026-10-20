@@ -34,6 +34,7 @@ public class SelfTest {
 		world_settings();
 		neuro();
 		leaves_use_co2();
+		restart_and_elite();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -618,4 +619,112 @@ public class SelfTest {
 		check("--set changes Constant", Constant.max_age == 777);
 		Constant.max_age = saved;
 	}
+	//
+	//перезапуск при вымирании и клоны лучших
+	private static void kill_all_of(WorldBio w, Species sp) {
+		for (IBot o : w.objects) {
+			if (o.species() == sp && o.alive()) {
+				o.die(Ledger.DIE_REMOVED);//растение оставляет труп: он в мире, но не живой — вымирание его не считает
+			}
+		}
+	}
+	private static void restart_and_elite() throws Exception {
+		System.out.println("restart when extinct, elite:");
+		Presets.seed = 11;
+		Constant.restart_mode = "off";
+		WorldBio w = new WorldBio(false);
+		w.step();
+		kill_all_of(w, Species.OXYGEN_BOT);
+		w.step();
+		check("restart off: an empty world stays empty", w.restarts == 0 && w.objects.isEmpty());
+
+		Constant.restart_mode = "all";
+		Constant.elite = 1;
+		Constant.elite_size = 10;
+		Constant.elite_fields = "lifetime";
+		w = new WorldBio(false);
+		w.step();
+		java.util.List<Bot> marked = new java.util.ArrayList<Bot>();
+		for (IBot o : w.objects) {//трое долгожителей с узнаваемым геномом — должны попасть в архив
+			if (o instanceof Bot b && marked.size() < 3) {
+				b.life_steps = 1_000_000;
+				java.util.Arrays.fill(b.genom_array[0], 40 + marked.size());
+				marked.add(b);
+			}
+		}
+		long series = w.series_started;
+		kill_all_of(w, Species.OXYGEN_BOT);
+		w.step();
+		check("restart all: the world is created again (restarts " + w.restarts + ")", w.restarts == 1 && w.objects.size() == Constant.starting_bot_count);
+		check("the series start is kept over the restart", w.series_started == series);
+		int clones = 0, from_archive = 0;
+		java.util.Set<String> archive = new java.util.HashSet<String>();
+		for (IBot o : w.objects) {
+			Bot b = (Bot) o;
+			String g = java.util.Arrays.deepToString(b.genom_array);
+			archive.add(g);
+			if (b.genom_array[0][0] >= 40 && b.genom_array[0][0] <= 42 && b.genom_array[0][63] == b.genom_array[0][0]) {
+				clones++;
+			}
+		}
+		from_archive = archive.size();
+		check("new bots are exact clones of " + from_archive + " archived (elite_size 10)", from_archive <= 10);
+		check("the best by lifetime are cloned (" + clones + " of " + w.objects.size() + " = 3 of 10)", clones == 3 * Constant.starting_bot_count / 10);
+
+		java.io.File f = java.io.File.createTempFile("oxygen-restart", ".oxw");
+		WorldIO.save(w, f);
+		WorldBio w2 = new WorldBio(false);
+		WorldIO.load(w2, f);
+		f.delete();
+		check("restarts and series start survive save/load", w2.restarts == 1 && w2.series_started == series);
+
+		w.newPopulation();//кнопка Again / New world — новая серия
+		check("Again starts a new series", w.restarts == 0 && w.series_started >= series);
+
+		Constant.restart_mode = "any";
+		Constant.starting_plant_count = 200;
+		w = new WorldBio(false);
+		w.step();
+		for (IBot o : w.objects) {
+			if (o instanceof sct.plants.Plant p) {
+				java.util.Arrays.fill(p.genome, (byte) 7);
+				p.life_steps = 1_000_000;
+			}
+		}
+		kill_all_of(w, Species.PLANT);
+		w.step();
+		check("restart any: plants extinct, bots alive — restarted", w.restarts == 1);
+		boolean plant_clones = true;
+		int plants = 0;
+		for (IBot o : w.objects) {
+			if (o instanceof sct.plants.Plant p) {
+				plants++;
+				for (byte v : p.genome) {
+					plant_clones &= v == 7;
+				}
+			}
+		}
+		check("plants are cloned from the archive too (" + plants + " seedlings)", plants > 0 && plant_clones);
+
+		Constant.restart_mode = "off";
+		Constant.elite = 0;
+		Constant.elite_size = 100;
+		Constant.elite_fields = "lifetime,children";
+		Constant.starting_plant_count = 0;
+		Presets.seed = -1;
+		boolean bad = false;
+		try {
+			Presets.set("restart_mode=sometimes");
+		}catch (IllegalArgumentException e) {
+			bad = true;
+		}
+		boolean bad_field = false;
+		try {
+			Presets.set("elite_fields=lifetime,beauty");
+		}catch (IllegalArgumentException e) {
+			bad_field = true;
+		}
+		check("wrong restart_mode / elite field is an error", bad && bad_field);
+	}
+
 }

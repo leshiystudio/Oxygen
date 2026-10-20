@@ -50,6 +50,12 @@ public class Constant {
 	//
 	public static String bot_actions_off = "";//выключенные действия бота через запятую (BotAction), например "attack,seed"
 	public static String bot_brain = "genome";//мозг ботов (Brains): genome — геном команд
+	//перезапуск мира, когда жизнь кончилась (WorldBio.auto_restart): off — нет, all — вымерли все популяции,
+	//any — вымерла любая популяция. Мир создается заново с теми же настройками (зерно — следующее)
+	public static String restart_mode = "off";
+	public static int elite = 0;//1 — при перезапуске новый мир заселяется точными клонами лучших (Elite)
+	public static int elite_size = 100;//сколько лучших хранить на популяцию
+	public static String elite_fields = "lifetime,children";//по каким счетчикам оценка (Elite.FIELDS через запятую)
 	public static int mineral_influx = -1;//случайный приток минералов в нижнюю четверть мира: 1 — да, 0 — нет, -1 — только в мире без растений
 	public static String plant_actions_off = "";
 	public static String plant_brain = "";//мозг растений: think_new, think_old, neuro; пусто — по plant.think_mode//выключенные действия растений (PlantAction), например "eat,move"

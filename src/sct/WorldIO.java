@@ -190,6 +190,9 @@ public class WorldIO {
 			if (ws.started > 0) {//мир идет с того же момента, что до сохранения
 				w.started = ws.started;
 			}
+			w.series_started = ws.series_started > 0 ? ws.series_started : w.started;//серия перезапусков — тоже
+			w.restarts = ws.restarts;
+			w.elites = null;//зал славы в файл не пишется — набирается заново
 			Bot.rand = r_bot;
 			WorldUtils.rand = r_utils;
 			w.rand = r_world;
@@ -272,6 +275,8 @@ public class WorldIO {
 		w.selection = null;
 		w.prev_selection = null;
 		w.started = System.currentTimeMillis();//файл без времени создания (старые версии) — отсчет с загрузки; load_v2 поправит
+		w.series_started = w.started;
+		w.restarts = 0;
 	}
 	//
 	private static void write_brain(DataOutputStream out, Brain<?> brain) throws IOException {//1 — нейросеть (веса и память), 0 — нет

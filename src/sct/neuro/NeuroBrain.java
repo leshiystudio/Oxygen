@@ -55,6 +55,9 @@ public class NeuroBrain<B extends IBot> implements Brain<B> {
 	public Brain<B> spawn() {//отдельная сеть для каждого существа при создании мира
 		return new NeuroBrain<B>(c, body);
 	}
+	public NeuroBrain<B> exact_copy() {//те же веса без мутации, своя память — клон в новом мире (Elite)
+		return new NeuroBrain<B>(c, body, net.copy());
+	}
 	public Brain<B> child(B parent) {
 		NeuroBrain<B> ch = new NeuroBrain<B>(c, body, net.copy());
 		if (rand.nextDouble() < c.mutation_chance && ch.net.mutate(rand, c.mutation_rate, c.mutation_sigma) > 0) {

@@ -88,6 +88,12 @@ public class NewWorldDialog extends JDialog {
 		//в диалоге это задают популяции (численность, мозг, действия) — в таблице параметров не показываются
 		static final java.util.Set<String> by_populations = java.util.Set.of(
 			"starting_bot_count", "starting_plant_count", "bot_brain", "bot_actions_off", "plant_actions_off");
+		//перезапуск и перенос лучших — на первой вкладке, а не в таблице параметров ботов
+		static final java.util.Set<String> world_keys = java.util.Set.of("restart_mode", "elite", "elite_size", "elite_fields");
+		private final JComboBox<String> restart_box = new JComboBox<String>(new String[]{"off", "all", "any"});
+		private final javax.swing.JCheckBox elite_box = new javax.swing.JCheckBox("carry the best: clone them into the new world");
+		private final JTextField field_elite_size = new JTextField(4);
+		private final javax.swing.JCheckBox[] elite_fields = new javax.swing.JCheckBox[Elite.FIELDS.length];
 
 		public NewWorldPanel(WorldBio world, Runnable close) {
 			this(initial(world), creator(world), close);
@@ -119,7 +125,26 @@ public class NewWorldDialog extends JDialog {
 			top.add(field_h);
 			top.add(new JLabel("   seed (-1 — random)"));
 			top.add(field_seed);
-			p.add(top, BorderLayout.NORTH);
+			//перезапуск при вымирании и перенос лучших (Constant.restart_mode, elite..., Elite)
+			JPanel run = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			run.add(new JLabel("restart when extinct"));
+			restart_box.setToolTipText("off — no; all — when every population died out; any — when any population died out");
+			run.add(restart_box);
+			run.add(new JLabel("   "));
+			elite_box.setToolTipText("on restart, the best of the series (by the scores below) are cloned exactly to fill each population");
+			run.add(elite_box);
+			run.add(new JLabel("keep"));
+			run.add(field_elite_size);
+			run.add(new JLabel("best by:"));
+			for (int i = 0; i < elite_fields.length; i++) {
+				elite_fields[i] = new javax.swing.JCheckBox(Elite.FIELDS[i]);
+				run.add(elite_fields[i]);
+			}
+			run.add(new JLabel("(each divided by its mean, summed)"));
+			JPanel north = new JPanel(new java.awt.GridLayout(2, 1));
+			north.add(top);
+			north.add(run);
+			p.add(north, BorderLayout.NORTH);
 			//популяции
 			JPanel pops = new JPanel(new BorderLayout(4, 4));
 			pops.setBorder(BorderFactory.createTitledBorder("Populations: body + brain + count (0 — not in the world)"));
@@ -282,9 +307,16 @@ public class NewWorldDialog extends JDialog {
 			field_w.setText(scale[0].trim());
 			field_h.setText(scale[1].trim());
 			field_seed.setText(String.valueOf(s.seed));
+			restart_box.setSelectedItem(s.constants.getOrDefault("restart_mode", Constant.restart_mode));
+			elite_box.setSelected(!"0".equals(s.constants.getOrDefault("elite", String.valueOf(Constant.elite))));
+			field_elite_size.setText(s.constants.getOrDefault("elite_size", String.valueOf(Constant.elite_size)));
+			java.util.Set<String> ef = new java.util.HashSet<String>(java.util.Arrays.asList(s.constants.getOrDefault("elite_fields", Constant.elite_fields).split(",")));
+			for (int i = 0; i < elite_fields.length; i++) {
+				elite_fields[i].setSelected(ef.contains(Elite.FIELDS[i]));
+			}
 			List<String[]> rows = new ArrayList<String[]>();
 			for (Map.Entry<String, String> e : s.constants.entrySet()) {
-				if (!e.getKey().equals("world_scale") && !by_populations.contains(e.getKey())) {//размер — на первой вкладке, остальное — у популяций
+				if (!e.getKey().equals("world_scale") && !by_populations.contains(e.getKey()) && !world_keys.contains(e.getKey())) {//размер, перезапуск — на первой вкладке, остальное — у популяций
 					rows.add(new String[]{e.getKey(), e.getValue()});
 				}
 			}
@@ -377,6 +409,23 @@ public class NewWorldDialog extends JDialog {
 			s.constants.clear();
 			s.constants.put("world_scale", w + "," + h);
 			s.constants.putAll(constants_table.values());
+			s.constants.put("restart_mode", (String) restart_box.getSelectedItem());
+			s.constants.put("elite", elite_box.isSelected() ? "1" : "0");
+			int keep = Integer.parseInt(field_elite_size.getText().trim());
+			if (keep < 1) {
+				throw new IllegalArgumentException("сколько лучших хранить — не меньше 1");
+			}
+			s.constants.put("elite_size", String.valueOf(keep));
+			StringBuilder ef = new StringBuilder();
+			for (int i = 0; i < elite_fields.length; i++) {
+				if (elite_fields[i].isSelected()) {
+					ef.append(ef.length() == 0 ? "" : ",").append(Elite.FIELDS[i]);
+				}
+			}
+			if (elite_box.isSelected() && ef.length() == 0) {
+				throw new IllegalArgumentException("для переноса лучших отметьте хотя бы одно поле оценки");
+			}
+			s.constants.put("elite_fields", ef.toString());
 			s.seed = Long.parseLong(field_seed.getText().trim());
 			store_plant_params();
 			store_neuro_params();

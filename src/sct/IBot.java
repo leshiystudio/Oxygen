@@ -24,4 +24,7 @@ public interface IBot {
 	boolean same_kin(IBot other);//«свой/чужой»; существо другого вида — всегда чужое
 	int color(int draw_type);//цвет 0xRRGGBB для отрисовки
 	String describe();//для панели и инструмента Info
+	default boolean living() {//живое (у растения труп еще в мире, но уже не живой) — для проверки вымирания
+		return alive();
+	}
 }

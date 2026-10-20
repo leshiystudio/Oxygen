@@ -66,6 +66,7 @@ table.pg td.on { outline: 2px solid #fff; outline-offset: -2px; }
 <header>
 	<b>Oxygen</b>
 	<span class="chip" id="s_since">started <span id="s_started">–</span> · running <span id="s_run">–</span></span>
+	<span class="chip" id="s_restarts" hidden title="перезапусков при вымирании в этой серии; после — время текущей попытки">restarts <span id="s_rn">0</span> · this try <span id="s_try">–</span></span>
 	<span class="chip">step <span id="s_steps">–</span></span>
 	<span class="chip">bots <span id="s_bots">–</span></span>
 	<span class="chip">plants <span id="s_plants">–</span></span>
@@ -344,7 +345,10 @@ async function load_status() {
 	fill_select($("bg"), s.backgrounds, "bg");
 	const t = since(s);
 	$("s_started").textContent = t.when; $("s_run").textContent = t.run;
-	$("s_since").title = "мир создан " + t.full;
+	$("s_since").title = "серия начата " + t.full;
+	$("s_restarts").hidden = s.restart_mode === "off" && !s.restarts;
+	$("s_rn").textContent = s.restarts;
+	$("s_try").textContent = since({ started: s.attempt_started, now: s.now }).run;
 	$("s_steps").textContent = s.steps;
 	$("s_bots").textContent = fmt(s.bots);
 	$("s_plants").textContent = fmt(s.plants);

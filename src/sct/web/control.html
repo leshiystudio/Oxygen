@@ -110,6 +110,15 @@ footer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding:
 					<label>height <input type="number" id="f_h" min="16"></label>
 					<label>seed <input type="number" id="f_seed"></label><span class="hint">−1 — случайное</span>
 				</div>
+				<div class="row">
+					<label title="off — нет; all — когда вымерли все популяции; any — когда вымерла любая">restart when extinct <select id="f_restart"><option value="off">off</option><option value="all">all populations died out</option><option value="any">any population died out</option></select></label>
+				</div>
+				<div class="row">
+					<label title="при перезапуске каждая популяция заполняется точными клонами лучших за серию"><input type="checkbox" id="f_elite"> carry the best: clone them into the new world</label>
+					<label>keep <input type="number" id="f_elite_size" min="1" style="width:70px"> best</label>
+					<span>by:</span><span id="f_elite_fields" class="row" style="margin:0"></span>
+					<span class="hint">каждое поле делится на свое среднее, потом сумма</span>
+				</div>
 				<fieldset><legend>Populations: body + brain + count (0 — not in the world)</legend>
 					<div class="tablewrap"><table id="pops"></table></div>
 					<div class="row">
@@ -283,7 +292,7 @@ async function refresh() {
 	$("status").innerHTML = "";
 	const t = since(st);
 	$("status").title = "мир создан " + t.full;
-	const parts = [["started", t.when], ["running", t.run], ["step", st.steps], ["bots", st.bots], ["plants", st.plants], ["steps/s", Math.round(st.steps_per_sec)], ["streams", st.streams], ["ms/step", st.ms_per_step.toFixed(2)]];
+	const parts = [["started", t.when], ["running", t.run], ["step", st.steps], ["bots", st.bots], ["plants", st.plants], ["steps/s", Math.round(st.steps_per_sec)], ["streams", st.streams], ["restarts", st.restarts], ["ms/step", st.ms_per_step.toFixed(2)]];
 	for (const [k, v] of parts) $("status").append(k + " ", el("b", {}, String(v)), "   ");
 	$("status").append(st.paused ? "· paused" : "· " + st.speed);
 	$("b_pause").textContent = st.paused ? "Resume" : "Pause";
@@ -318,6 +327,7 @@ function set_settings(s) {
 	$("f_w").value = ws[0].trim(); $("f_h").value = (ws[1] || ws[0]).trim();
 	$("f_seed").value = S.seed;
 	for (const h of SC.hidden_constants) delete S.constants[h];//их задают популяции (как в диалоге)
+	render_run();
 	render_all();
 }
 function render_all() {
@@ -336,6 +346,29 @@ function render_sub(id) {
 $("f_w").addEventListener("input", () => S.constants.world_scale = $("f_w").value + "," + $("f_h").value);
 $("f_h").addEventListener("input", () => S.constants.world_scale = $("f_w").value + "," + $("f_h").value);
 $("f_seed").addEventListener("input", () => S.seed = $("f_seed").value);
+//перезапуск при вымирании и перенос лучших — обычные параметры Constant, только на первой вкладке
+function render_run() {
+	const c = S.constants;
+	$("f_restart").value = c.restart_mode || "off";
+	$("f_elite").checked = (c.elite || "0") !== "0";
+	$("f_elite_size").value = c.elite_size || "100";
+	const on = new Set((c.elite_fields || "").split(",").map(x => x.trim()).filter(Boolean));
+	const box = $("f_elite_fields");
+	box.innerHTML = "";
+	for (const f of SC.elite_fields) {
+		box.append(el("label", {}, el("input", { type: "checkbox", checked: on.has(f), onchange: e => {
+			if (e.target.checked) on.add(f); else on.delete(f);
+			c.elite_fields = SC.elite_fields.filter(x => on.has(x)).join(",");
+		} }), f));
+	}
+}
+$("f_restart").addEventListener("change", () => S.constants.restart_mode = $("f_restart").value);
+$("f_elite").addEventListener("change", () => S.constants.elite = $("f_elite").checked ? "1" : "0");
+$("f_elite_size").addEventListener("input", () => {
+	const v = parseInt($("f_elite_size").value);
+	$("f_elite_size").classList.toggle("bad", !(v >= 1));
+	if (v >= 1) S.constants.elite_size = String(v);
+});
 
 // ---- популяции
 function new_population(species, base) {
@@ -474,7 +507,7 @@ function param_table(box, values, types, defaults, keys, onchange) {
 }
 let startup = null;//настройки запуска — для подсветки измененных параметров
 function render_consts() {
-	const keys = Object.keys(S.constants).filter(k => k !== "world_scale" && !SC.hidden_constants.includes(k));
+	const keys = Object.keys(S.constants).filter(k => k !== "world_scale" && !SC.hidden_constants.includes(k) && !SC.world_constants.includes(k));
 	param_table($("consts"), S.constants, SC.constant_types, startup && startup.constants, keys);
 }
 function render_actions(box, pop) {
@@ -571,6 +604,7 @@ function validate() {//то, что диалог проверяет сам; ос
 	const w = parseInt($("f_w").value), h = parseInt($("f_h").value);
 	if (!(w >= 16 && h >= 16)) throw new Error("мир должен быть не меньше 16x16");
 	if (!/^-?\d+$/.test(String(S.seed).trim())) throw new Error("seed — целое число");
+	if (S.constants.elite === "1" && !S.constants.elite_fields) throw new Error("для переноса лучших отметьте хотя бы одно поле оценки");
 	const bad = document.querySelectorAll("#p_new input.bad");
 	if (bad.length) throw new Error("неверных значений: " + bad.length + " (подсвечены красным)");
 }

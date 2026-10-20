@@ -24,6 +24,8 @@ public class WorldSettings {
 	public Map<String, String> constants = new LinkedHashMap<String, String>();//имя поля Constant -> значение
 	public long seed = -1;
 	public long started = 0;//когда мир создан (мс эпохи) — только у настроек живого мира (of, файл .oxw); 0 — не задано
+	public long series_started = 0;//когда началась серия перезапусков; 0 — не задано
+	public int restarts = 0;//перезапусков при вымирании в серии
 	public List<Population> populations = new ArrayList<Population>();
 	public Interaction interaction;
 	//
@@ -51,6 +53,8 @@ public class WorldSettings {
 		}
 		s.interaction = copy(Interaction.current, w.populations.size());
 		s.started = w.started;
+		s.series_started = w.series_started;
+		s.restarts = w.restarts;
 		return s;
 	}
 	//настройки, с которыми популяция заведомо не выживет; null — все в порядке
@@ -76,6 +80,8 @@ public class WorldSettings {
 		s.constants.putAll(constants);
 		s.seed = seed;
 		s.started = started;
+		s.series_started = series_started;
+		s.restarts = restarts;
 		for (Population p : populations) {
 			s.populations.add(copy(p));
 		}
@@ -140,6 +146,10 @@ public class WorldSettings {
 		if (started > 0) {
 			pr.put("started", String.valueOf(started));
 		}
+		if (series_started > 0) {
+			pr.put("series.started", String.valueOf(series_started));
+			pr.put("series.restarts", String.valueOf(restarts));
+		}
 		for (Map.Entry<String, String> e : constants.entrySet()) {
 			pr.put("constant." + e.getKey(), e.getValue());
 		}
@@ -195,6 +205,8 @@ public class WorldSettings {
 		try {
 			s.seed = Long.parseLong(pr.getProperty("seed", "-1"));
 			s.started = Long.parseLong(pr.getProperty("started", "0"));
+			s.series_started = Long.parseLong(pr.getProperty("series.started", "0"));
+			s.restarts = Integer.parseInt(pr.getProperty("series.restarts", "0"));
 			for (String key : pr.stringPropertyNames()) {
 				if (key.startsWith("constant.")) {
 					s.constants.put(key.substring(9), pr.getProperty(key));

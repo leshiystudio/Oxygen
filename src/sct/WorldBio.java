@@ -63,6 +63,12 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	int org_count = 0;//количество семян
 	int population = 0;//номер популяции (сколько раз создавали мир)
 	public volatile long started = System.currentTimeMillis();//когда мир создан (реальное время); сохраняется в файле мира
+	//перезапуск при вымирании (Constant.restart_mode) и перенос лучших (Constant.elite, Elite)
+	public volatile int restarts = 0;//перезапусков в этой серии; New world / Again — с нуля
+	public volatile long series_started = started;//когда началась серия (первый мир до перезапусков)
+	java.util.List<Elite> elites;//зал славы по номеру популяции; null — перенос выключен
+	private boolean restarting = false;
+	private java.util.List<java.util.List<Object>> carry;//наследственность лучших для заселения (на время newPopulation)
 	volatile IBot selection = null;//выбранное существо (бот, растение, нейро...)
 	volatile IBot prev_selection = null;//предыдущее выбранное — для сравнения геномов
 	int draw_type = 0;//режим отрисовки
@@ -397,6 +403,11 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			Interaction.current = next_interaction != null ? next_interaction : new Interaction(populations.size());
 			kill_all();
 			started = System.currentTimeMillis();
+			if (!restarting) {//новый мир по кнопке — новая серия: счет перезапусков и зал славы с нуля
+				restarts = 0;
+				series_started = started;
+				elites = null;
+			}
 			for (Population p : populations) {
 				if (p.species == Species.OXYGEN_BOT) {
 					spawn_bots(p);
@@ -435,6 +446,10 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 						);
 						new_bot.brain = brain == null ? null : brain.spawn();//нейросеть — своя у каждого
 						new_bot.pop = p;
+						Object h = heritage_for(p, i);
+						if (h != null) {
+							new_bot.take_heritage(h);
+						}
 						objects.add(new_bot);
 						Map[x][y] = new_bot;
 						break;
@@ -485,6 +500,10 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 					continue;
 				}
 				sct.plants.Plant plant = sct.plants.Plant.seedling(pw, x, y, brain.spawn());
+				Object h = heritage_for(p, created);
+				if (h != null) {
+					plant.take_heritage(h);
+				}
 				objects.add(plant);
 				Map[x][y] = plant;
 				created++;
@@ -528,10 +547,20 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		org_count = 0;
 		plant_count = 0;
 		//
+		int[] live = new int[populations.size()];//живых по популяциям — для проверки вымирания
+		int live_other = 0;
 		ListIterator<IBot> bot_iterator = objects.listIterator();
 		while (bot_iterator.hasNext()) {
 			IBot next_bot = bot_iterator.next();
 			next_bot.Update(bot_iterator);
+			if (next_bot.living()) {
+				Population lp = next_bot.population();
+				if (lp != null && lp.id < live.length) {
+					live[lp.id]++;
+				}else {
+					live_other++;
+				}
+			}
 			obj_count++;
 			if (next_bot instanceof Bot) {
 				if (((Bot) next_bot).state != 0) {
@@ -560,7 +589,13 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			}
 		}
 		//
-		objects.removeIf(b -> !b.alive());//один проход вместо удаления по одному из середины списка
+		objects.removeIf(b -> {//один проход вместо удаления по одному из середины списка
+			if (b.alive()) {
+				return false;
+			}
+			offer_elite(b);//жизнь закончена — в зал славы, если лучше худшего там
+			return true;
+		});
 		if (selection != null && !selection.alive()) {
 			selection = null;
 		}
@@ -569,6 +604,83 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			KinClans.update(this);
 		}
 		History.record(this, ms_per_step);
+		if (extinct(live, live_other)) {
+			auto_restart();
+		}
+	}
+
+	//
+	//ПЕРЕЗАПУСК ПРИ ВЫМИРАНИИ И ПЕРЕНОС ЛУЧШИХ
+	//
+	private boolean extinct(int[] live, int live_other) {//по Constant.restart_mode; популяции без стартовой численности не в счет
+		String mode = Constant.restart_mode;
+		if (mode.equals("off") || steps < 2) {
+			return false;
+		}
+		boolean any_dead = false, all_dead = live_other == 0, any_started = false;
+		for (Population p : populations) {
+			if (p.count <= 0 || p.id >= live.length) {
+				continue;
+			}
+			any_started = true;
+			if (live[p.id] == 0) {
+				any_dead = true;
+			}else {
+				all_dead = false;
+			}
+		}
+		return any_started && (mode.equals("any") ? any_dead : all_dead);
+	}
+	private void offer_elite(IBot o) {
+		if (Constant.elite == 0 || !(o instanceof BotSuper b) || b.pop == null) {
+			return;
+		}
+		if (elites == null || elites.size() != populations.size()) {
+			elites = new java.util.ArrayList<Elite>();
+			for (int k = 0; k < populations.size(); k++) {
+				elites.add(new Elite(Constant.elite_size, Constant.elite_fields));
+			}
+		}
+		if (b.pop.id < elites.size()) {
+			elites.get(b.pop.id).offer(b);
+		}
+	}
+	private Object heritage_for(Population p, int i) {//наследственность i-го существа популяции при заселении: лучшие по кругу
+		if (carry == null || p.id >= carry.size()) {
+			return null;
+		}
+		java.util.List<Object> best = carry.get(p.id);
+		return best.isEmpty() ? null : best.get(i % best.size());
+	}
+	void auto_restart() {//под lock (из step)
+		if (Constant.elite != 0) {
+			for (IBot o : objects) {//кто еще в мире (живые в режиме any, трупы растений) — тоже в зал славы
+				offer_elite(o);
+			}
+			if (elites != null) {
+				carry = new java.util.ArrayList<java.util.List<Object>>();
+				for (Elite e : elites) {
+					carry.add(e.best());
+				}
+			}
+		}
+		restarts++;
+		long seed = Presets.seed;
+		if (seed >= 0) {//зерно задано — у каждого перезапуска свое, иначе мир повторится и вымрет так же
+			Presets.seed = seed + restarts * 7919L;
+			Presets.apply_seed(this);
+			Presets.seed = seed;
+		}
+		restarting = true;
+		try {
+			newPopulation();
+		}finally {
+			restarting = false;
+			carry = null;
+		}
+	}
+	public int elite_count(int pop) {//сколько лучших сейчас в зале славы популяции
+		return elites == null || pop >= elites.size() ? 0 : elites.get(pop).count();
 	}
 
 }

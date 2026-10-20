@@ -139,6 +139,7 @@ public class Bot extends BotSuper {
 	}
 	public int Update(ListIterator<IBot> iterator) {
 		if (killed == 0) {
+			life_steps++;
 			if (state == 0) {//если бот
 				if(queen == 0) {
 					age -= (int)(oxygen_map[xpos][ypos] * Constant.age_minus_coeff) + 1;
@@ -637,6 +638,7 @@ public class Bot extends BotSuper {
 			pht_org_block = 1;
 			double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
 			energy += pe;
+			life_energy += pe;
 			Ledger.in_sun += pe;
 			go_green();
 			oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
@@ -720,6 +722,8 @@ public class Bot extends BotSuper {
 					eat_other(target);
 				}else if (victim != null) {
 					energy += victim.energy;
+					life_energy += victim.energy;
+					life_kills++;
 					victim.energy = 0;//энергию забрал хищник: в органику уходит только тело
 					victim.die_with_organics(Ledger.DIE_EATEN);
 					go_red();
@@ -900,6 +904,7 @@ public class Bot extends BotSuper {
 			oxygen_map[xpos][ypos] = Math.max(0, oxygen_map[xpos][ypos] - gas * Constant.org_recycle_ox_coeff);
 			co2_map[xpos][ypos] += gas * Constant.org_recycle_co2_coeff;
 			energy += take;
+			life_energy += take;
 			org_map[px][py] -= take;
 			go_yellow();
 		}
@@ -994,6 +999,7 @@ public class Bot extends BotSuper {
 					new_bot.set_current_genom(genom_current_idx);//потомок продолжает с того же генома, что и родитель
 					new_bot.brain = brain == null ? null : brain.child(this);
 					new_bot.pop = pop;
+					new_bot.inherit_life(this);
 					//цвет клана наследуется и чуть сдвигается при каждой мутации — видны родственные группы
 					new_bot.clan_color = mutated ? drift_color(clan_color, 10) : clan_color;
 					//
@@ -1035,6 +1041,8 @@ public class Bot extends BotSuper {
 		double got = given * exchange(target);
 		Ledger.in_exchange += got - given;
 		energy += got;
+		life_energy += got;
+		life_kills++;
 		go_red();
 	}
 	public boolean crowds() {//семечко соседом не считается — как было в bot_count
@@ -1054,6 +1062,32 @@ public class Bot extends BotSuper {
 	}
 	public void die(int cause) {
 		die_with_organics(cause);
+	}
+	//
+	//НАСЛЕДСТВЕННОСТЬ для клонов в новом мире (Elite): геном, цвет клана, нейросеть (если есть)
+	//
+	record Heritage(int[][] genome, int genom_idx, Color clan_color, sct.neuro.NeuroBrain<Bot> net) {}
+	public Object heritage() {
+		int[][] g = new int[genom_array.length][];
+		for (int i = 0; i < g.length; i++) {
+			g[i] = genom_array[i].clone();
+		}
+		return new Heritage(g, genom_current_idx, clan_color, brain instanceof sct.neuro.NeuroBrain<Bot> nb ? nb.exact_copy() : null);
+	}
+	public void take_heritage(Object h) {//точная копия: без мутации
+		if (!(h instanceof Heritage hb) || hb.genome().length != genom_array.length) {
+			return;
+		}
+		for (int i = 0; i < genom_array.length; i++) {
+			if (hb.genome()[i].length == genom_array[i].length) {
+				genom_array[i] = hb.genome()[i].clone();
+			}
+		}
+		set_current_genom(hb.genom_idx());
+		clan_color = hb.clan_color();
+		if (hb.net() != null && brain instanceof sct.neuro.NeuroBrain<?>) {
+			brain = hb.net().exact_copy();
+		}
 	}
 	public boolean same_kin(IBot other) {
 		return other instanceof Bot && other.species() == species() && same_population(other)

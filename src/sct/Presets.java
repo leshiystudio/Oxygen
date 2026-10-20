@@ -105,6 +105,16 @@ public class Presets {
 			}
 			return;
 		}
+		if (name.equals("restart_mode") && !java.util.Set.of("off", "all", "any").contains(value)) {
+			fail("restart_mode: off, all или any, получено " + value);
+		}
+		if (name.equals("elite_fields")) {
+			try {
+				Elite.check_fields(value);
+			}catch (IllegalArgumentException e) {
+				fail(e.getMessage());
+			}
+		}
 		try {
 			Field f = Constant.class.getField(name);
 			if (!Modifier.isStatic(f.getModifiers())) {

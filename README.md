@@ -37,6 +37,13 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 | `--w`, `--h`, `--bots` | размер мира и число стартовых ботов |
 | `--theme dark\|light` | тема (по умолчанию тёмная) |
 
+## Перезапуск и отбор лучших
+
+`--set restart_mode=all|any` — мир сам создается заново, когда вымерли все (любая) популяции;
+`--set elite=1` — заново он заселяется точными клонами лучших за серию (`elite_size`, по умолчанию 100;
+оценка по `elite_fields`: lifetime, children, energy, kills, generation). То же — на вкладке *World & species*.
+Подробно — [docs/docker-server.md](docs/docker-server.md#перезапуск-при-вымирании-и-перенос-лучших).
+
 ## Сервер (Docker)
 
 Мир без окна на Linux-сервере: симуляция на полной скорости, просмотр через веб (порт 80, только

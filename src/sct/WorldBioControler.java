@@ -307,7 +307,8 @@ public class WorldBioControler extends JPanel{
 
 	private void refresh() {
 		label_bot_count.setText("bots: " + world.b_count + ", seeds: " + world.org_count + (world.plants != null ? ", plants: " + world.plant_count : ""));
-		label_steps.setText("steps: " + world.steps + (Presets.seed >= 0 ? ", seed " + Presets.seed : ""));
+		label_steps.setText("steps: " + world.steps + (Presets.seed >= 0 ? ", seed " + Presets.seed : "")
+			+ (world.restarts > 0 || !Constant.restart_mode.equals("off") ? ", restarts " + world.restarts : ""));
 		label_ms.setText(String.format("ms/step: %.1f", world.ms_per_step));
 		label_speed.setText("speed: " + world.speed_name());
 		label_balance.setText(String.format("balance diff: %.2g", Ledger.total_diff));

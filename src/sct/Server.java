@@ -660,7 +660,11 @@ public class Server {
 		try {
 			int last = History.size - 1;
 			sb.append("\"steps\":").append(w.steps)
-				.append(",\"started\":").append(w.started)
+				.append(",\"started\":").append(w.series_started)//запуск серии; попытка после перезапуска — attempt_started
+				.append(",\"attempt_started\":").append(w.started)
+				.append(",\"restarts\":").append(w.restarts)
+				.append(",\"restart_mode\":").append(str(Constant.restart_mode))
+				.append(",\"elite\":").append(Constant.elite != 0)
 				.append(",\"now\":").append(System.currentTimeMillis())
 				.append(",\"world\":").append(w.population)
 				.append(",\"width\":").append(Constant.world_scale[0])
@@ -696,6 +700,7 @@ public class Server {
 					.append(",\"brain\":").append(str(p.brain))
 					.append(",\"start\":").append(p.count)
 					.append(",\"alive\":").append(last < 0 || i >= History.POPS ? 0 : (int) History.data[History.POP0 + i][last])
+					.append(",\"elite\":").append(w.elite_count(i))
 					.append(",\"color\":").append(str(String.format("#%06X", p.color.getRGB() & 0xFFFFFF))).append("}");
 			}
 		}finally {
@@ -780,6 +785,8 @@ public class Server {
 		sb.append(",\"sensors\":{\"OXYGEN_BOT\":").append(arr(sct.neuro.BotBody.instance.inputs()))
 			.append(",\"PLANT\":").append(arr(sct.neuro.PlantBody.instance.inputs())).append("}");
 		sb.append(",\"hidden_constants\":").append(arr(NewWorldDialog.NewWorldPanel.by_populations.toArray(new String[0])));
+		sb.append(",\"world_constants\":").append(arr(NewWorldDialog.NewWorldPanel.world_keys.toArray(new String[0])));//на первой вкладке
+		sb.append(",\"elite_fields\":").append(arr(Elite.FIELDS));
 		sb.append(",\"constant_types\":{");
 		boolean first = true;
 		for (java.lang.reflect.Field f : WorldSettings.constant_fields()) {

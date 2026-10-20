@@ -278,6 +278,7 @@ public class Plant extends BotSuper {
 
 		Plant j = new Plant(w, nx(d), ny(d), brain == null ? null : brain.child(this));
 		System.arraycopy(genome, 0, j.genome, 0, genome.length);//у потомка — своя копия генома
+		j.inherit_life(this);
 		j.type = t;
 		j.energy = transfer;
 		if (c.birth_health_share > 0) {//здоровье передается от родителя, а не появляется из ничего
@@ -397,6 +398,8 @@ public class Plant extends BotSuper {
 			long got = (long)(given * exchange(o));//энергия растений целая: дробь и обмен — статья журнала
 			Ledger.in_exchange += got - given;
 			add_energy(got);
+			life_energy += got;
+			life_kills++;
 			add_health(w.c.eat_health_gain);
 			return true;
 		}
@@ -424,8 +427,10 @@ public class Plant extends BotSuper {
 			to_eater = got;
 		}
 		add_energy(to_eater);
+		life_energy += to_eater;
 		add_health(w.c.eat_health_gain);
 		if (tj != IDEAD) {
+			life_kills++;
 			Ledger.die(Ledger.DIE_EATEN);
 		}
 		j.remove();
@@ -561,6 +566,7 @@ public class Plant extends BotSuper {
 			draw = avail > 0 ? (int) avail : 0;
 		}
 		w.soil[xpos][ypos] -= draw;
+		life_energy += draw;
 		long packet = draw;
 		if (c.body_forward_energy && energy > c.body_keep_energy) {
 			packet += energy - c.body_keep_energy;
@@ -602,6 +608,7 @@ public class Plant extends BotSuper {
 			if (sun > 0) {
 				Ledger.in_plant_sun += sun;
 				add_energy(sun);
+				life_energy += sun;
 			}
 			add_health(hp);
 		}
@@ -674,6 +681,7 @@ public class Plant extends BotSuper {
 		if (gain > 0) {
 			Ledger.in_plant_co2 += gain;
 			add_energy(gain);
+			life_energy += gain;
 		}
 		return true;
 	}
@@ -809,6 +817,9 @@ public class Plant extends BotSuper {
 		if (killed != 0) {
 			return 0;
 		}
+		if (is_alive_type(type)) {
+			life_steps++;
+		}
 		if (type == ILIVE) {
 			update_commands(iterator);
 			if (w.c.enable_lifecycle) {
@@ -839,6 +850,27 @@ public class Plant extends BotSuper {
 	}
 	public double energy_value() {
 		return (double) energy + ina + inb;
+	}
+	public boolean living() {//труп в мире еще есть, но уже не живой
+		return killed == 0 && is_alive_type(type);
+	}
+	//
+	//НАСЛЕДСТВЕННОСТЬ для клонов в новом мире (Elite): геном, цвет клана, нейросеть (если есть)
+	//
+	record Heritage(byte[] genome, int color, int ghash, sct.neuro.NeuroBrain<Plant> net) {}
+	public Object heritage() {
+		return new Heritage(genome.clone(), color, ghash, brain instanceof sct.neuro.NeuroBrain<Plant> nb ? nb.exact_copy() : null);
+	}
+	public void take_heritage(Object h) {//точная копия: без мутации
+		if (!(h instanceof Heritage hp) || hp.genome().length != genome.length) {
+			return;
+		}
+		System.arraycopy(hp.genome(), 0, genome, 0, genome.length);
+		color = hp.color();
+		ghash = hp.ghash();
+		if (hp.net() != null && brain instanceof sct.neuro.NeuroBrain<?>) {
+			brain = hp.net().exact_copy();
+		}
 	}
 	public double eaten_by(IBot eater, double efficiency) {//как eat_dir: остаток от КПД — в почву
 		long gain = (long) energy + ina + inb;
