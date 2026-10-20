@@ -62,6 +62,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	int obj_count = 0;//количество объектов
 	int org_count = 0;//количество семян
 	int population = 0;//номер популяции (сколько раз создавали мир)
+	public volatile long started = System.currentTimeMillis();//когда мир создан (реальное время); сохраняется в файле мира
 	volatile IBot selection = null;//выбранное существо (бот, растение, нейро...)
 	volatile IBot prev_selection = null;//предыдущее выбранное — для сравнения геномов
 	int draw_type = 0;//режим отрисовки
@@ -94,10 +95,13 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		timer = new Timer(33, e -> repaint());
 		if (start_threads) {
 			timer.start();
-			Thread sim_thread = new Thread(this::simulation_loop, "simulation");
-			sim_thread.setDaemon(true);
-			sim_thread.start();
+			start_simulation();
 		}
+	}
+	public void start_simulation() {//поток симуляции; без окна (сервер) — без таймера перерисовки
+		Thread sim_thread = new Thread(this::simulation_loop, "simulation");
+		sim_thread.setDaemon(true);
+		sim_thread.start();
 	}
 
 	private void initComponent() {
@@ -392,6 +396,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			}
 			Interaction.current = next_interaction != null ? next_interaction : new Interaction(populations.size());
 			kill_all();
+			started = System.currentTimeMillis();
 			for (Population p : populations) {
 				if (p.species == Species.OXYGEN_BOT) {
 					spawn_bots(p);

@@ -23,6 +23,7 @@ import sct.plants.PlantConfig;
 public class WorldSettings {
 	public Map<String, String> constants = new LinkedHashMap<String, String>();//имя поля Constant -> значение
 	public long seed = -1;
+	public long started = 0;//когда мир создан (мс эпохи) — только у настроек живого мира (of, файл .oxw); 0 — не задано
 	public List<Population> populations = new ArrayList<Population>();
 	public Interaction interaction;
 	//
@@ -42,10 +43,39 @@ public class WorldSettings {
 		s.interaction = new Interaction(s.populations.size());
 		return s;
 	}
+	public static WorldSettings of(WorldBio w) {//настройки, с которыми мир живет сейчас: параметры, его популяции и взаимодействия (под lock мира)
+		WorldSettings s = capture();
+		s.populations.clear();
+		for (Population p : w.populations) {
+			s.populations.add(copy(p));
+		}
+		s.interaction = copy(Interaction.current, w.populations.size());
+		s.started = w.started;
+		return s;
+	}
+	//настройки, с которыми популяция заведомо не выживет; null — все в порядке
+	public String check() {
+		StringBuilder sb = new StringBuilder();
+		for (Population p : populations) {
+			if (p.species == Species.PLANT && p.count > 0) {
+				PlantConfig c = p.plant_config;
+				int need = c.cost_birth + c.birth_min_energy;
+				if (need > c.energy_start_value) {
+					sb.append("«").append(p.name).append("»: росток рождается с энергией ").append(c.energy_start_value)
+						.append(", а для деления нужно cost_birth + birth_min_energy = ").append(need)
+						.append(". Ростки не фотосинтезируют (это делают листья), поэтому первое поколение не сможет")
+						.append(" размножиться и вымрет. Уменьшите cost_birth (до ").append(c.energy_start_value - c.birth_min_energy)
+						.append(") или увеличьте energy_start_value.").append(System.lineSeparator());
+				}
+			}
+		}
+		return sb.length() == 0 ? null : sb.toString().trim();
+	}
 	public WorldSettings copy() {
 		WorldSettings s = new WorldSettings();
 		s.constants.putAll(constants);
 		s.seed = seed;
+		s.started = started;
 		for (Population p : populations) {
 			s.populations.add(copy(p));
 		}
@@ -107,6 +137,9 @@ public class WorldSettings {
 			}
 		};
 		pr.put("seed", String.valueOf(seed));
+		if (started > 0) {
+			pr.put("started", String.valueOf(started));
+		}
 		for (Map.Entry<String, String> e : constants.entrySet()) {
 			pr.put("constant." + e.getKey(), e.getValue());
 		}
@@ -161,6 +194,7 @@ public class WorldSettings {
 		WorldSettings s = new WorldSettings();
 		try {
 			s.seed = Long.parseLong(pr.getProperty("seed", "-1"));
+			s.started = Long.parseLong(pr.getProperty("started", "0"));
 			for (String key : pr.stringPropertyNames()) {
 				if (key.startsWith("constant.")) {
 					s.constants.put(key.substring(9), pr.getProperty(key));

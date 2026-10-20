@@ -41,12 +41,7 @@ public class WorldIO {
 		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new GZIPOutputStream(new FileOutputStream(file))))) {
 			out.writeInt(magic);
 			out.writeInt(version);
-			WorldSettings ws = WorldSettings.capture();//параметры, с которыми мир живет сейчас
-			ws.populations.clear();
-			for (Population p : w.populations) {
-				ws.populations.add(WorldSettings.copy(p));
-			}
-			ws.interaction = WorldSettings.copy(Interaction.current, w.populations.size());
+			WorldSettings ws = WorldSettings.of(w);//параметры, с которыми мир живет сейчас
 			byte[] text = ws.to_text().getBytes(java.nio.charset.StandardCharsets.UTF_8);//не writeUTF: у него предел 64 КБ
 			out.writeInt(text.length);
 			out.write(text);
@@ -192,6 +187,9 @@ public class WorldIO {
 			History.name_populations(pops);
 			w.plants = first_plants;
 			install(w, objects, map, ox, co2, org, mnr, height, steps, population);
+			if (ws.started > 0) {//мир идет с того же момента, что до сохранения
+				w.started = ws.started;
+			}
 			Bot.rand = r_bot;
 			WorldUtils.rand = r_utils;
 			w.rand = r_world;
@@ -273,6 +271,7 @@ public class WorldIO {
 		w.population = population;
 		w.selection = null;
 		w.prev_selection = null;
+		w.started = System.currentTimeMillis();//файл без времени создания (старые версии) — отсчет с загрузки; load_v2 поправит
 	}
 	//
 	private static void write_brain(DataOutputStream out, Brain<?> brain) throws IOException {//1 — нейросеть (веса и память), 0 — нет

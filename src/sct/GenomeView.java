@@ -154,27 +154,8 @@ public class GenomeView extends JDialog {
 		mode = Mode.NEURO;
 		weights = nb.net.w.clone();
 		sizes = nb.net.sizes.clone();
-		String[] body_in = nb.body.inputs();
-		in_names = new String[sizes[0]];
-		for (int i = 0; i < in_names.length; i++) {
-			in_names[i] = i < body_in.length ? body_in[i] : "memory " + (i - body_in.length);
-		}
-		String[] acts = nb.body.actions();
-		out_names = new String[sizes[sizes.length - 1]];
-		int k = 0;
-		for (String a : acts) {
-			out_names[k++] = "action " + a;
-		}
-		for (int d = 0; d < nb.body.dirs(); d++) {
-			out_names[k++] = "direction " + d;
-		}
-		for (int p = 0; p < nb.body.params(); p++) {
-			out_names[k++] = "param " + p;
-		}
-		while (k < out_names.length) {
-			out_names[k] = "memory " + (k - acts.length - nb.body.dirs() - nb.body.params());
-			k++;
-		}
+		in_names = in_names(nb);
+		out_names = out_names(nb);
 		if (prev != null && prev != nb) {
 			double dist = nb.net.distance(prev.net);
 			compare.setText(String.format("vs previous (yellow): mean weight difference %.4f — %s (threshold %.4f)",
@@ -182,7 +163,35 @@ public class GenomeView extends JDialog {
 		}
 		note = String.format("  layers %s, activation %s, memory %d, choice %s", java.util.Arrays.toString(sizes), nb.c.activation, nb.c.memory, nb.c.choice);
 	}
-	private static String header(IBot o) {
+	//имена входов и выходов сети (окно генома и сервер — sct.BrainInfo)
+	static String[] in_names(NeuroBrain<?> nb) {
+		String[] body_in = nb.body.inputs();
+		String[] names = new String[nb.net.sizes[0]];
+		for (int i = 0; i < names.length; i++) {
+			names[i] = i < body_in.length ? body_in[i] : "memory " + (i - body_in.length);
+		}
+		return names;
+	}
+	static String[] out_names(NeuroBrain<?> nb) {
+		String[] acts = nb.body.actions();
+		String[] names = new String[nb.net.sizes[nb.net.sizes.length - 1]];
+		int k = 0;
+		for (String a : acts) {
+			names[k++] = "action " + a;
+		}
+		for (int d = 0; d < nb.body.dirs(); d++) {
+			names[k++] = "direction " + d;
+		}
+		for (int p = 0; p < nb.body.params(); p++) {
+			names[k++] = "param " + p;
+		}
+		while (k < names.length) {
+			names[k] = "memory " + (k - acts.length - nb.body.dirs() - nb.body.params());
+			k++;
+		}
+		return names;
+	}
+	static String header(IBot o) {
 		Population p = o.population();
 		return (p != null ? p.name : o.species().title) + " [" + o.cell_x() + ", " + o.cell_y() + "], brain " + WorldBio.brain_name(o);
 	}
@@ -280,7 +289,7 @@ public class GenomeView extends JDialog {
 					int v = plant_gen[idx] & 0xFF;
 					int x = x0 + c * cw;
 					int y = y0 + r * ch;
-					g.setColor(mode == Mode.PLANT_NEW ? new_color(c, v) : old_color(v));
+					g.setColor(mode == Mode.PLANT_NEW ? new_color(pc, c, v) : old_color(v));
 					g.fillRect(x + 1, y + 1, cw - 2, ch - 2);
 					g.setColor(Color.WHITE);
 					g.drawString(String.valueOf(v), x + 3, y + 13);
@@ -289,7 +298,7 @@ public class GenomeView extends JDialog {
 						g.fillRect(x + 2, y + ch - 4, cw - 4, 2);
 					}
 					if (over(x, y, cw, ch)) {
-						hover = (mode == Mode.PLANT_NEW ? "gene " + r + ", command " + c + " = " + v + ": " + new_decode(c, v)
+						hover = (mode == Mode.PLANT_NEW ? "gene " + r + ", command " + c + " = " + v + ": " + new_decode(pc, c, v)
 							: "command " + idx + " = " + v + ": " + old_decode(v));
 					}
 				}
@@ -340,7 +349,7 @@ public class GenomeView extends JDialog {
 		}
 	}
 	//
-	//РАСШИФРОВКА biosim
+	//РАСШИФРОВКА biosim (статические — ими же пользуется сервер, sct.BrainInfo)
 	//
 	private static final String[] checks = {"occupied left", "occupied ahead", "occupied right", "free left, ahead and right",
 		"energy for two children", "alien ahead", "own ahead"};
@@ -349,7 +358,7 @@ public class GenomeView extends JDialog {
 	private static final Color C_UNUSED = new Color(45, 45, 50), C_CHECK = new Color(120, 100, 160), C_BIRTH_MODE = new Color(90, 90, 100),
 		C_ACTION = new Color(60, 150, 90), C_JUMP = new Color(60, 100, 170);
 	private static final int[] plant_palette = {0x333338, 0xA0AAAA, 0xBE320A, 0xE6830A, 0x0AB01A, 0x6E3BFF};
-	private int plant_type(int v) {
+	static int plant_type(PlantConfig pc, int v) {
 		if (v < pc.type_ilive_max) {
 			return Plant.ILIVE;
 		}
@@ -364,38 +373,38 @@ public class GenomeView extends JDialog {
 		}
 		return Plant.EMPTY;
 	}
-	private Color new_color(int c, int v) {
+	static Color new_color(PlantConfig pc, int c, int v) {
 		switch (c) {
-			case 0: case 1: case 2: return new Color(plant_palette[plant_type(v)]);
+			case 0: case 1: case 2: return new Color(plant_palette[plant_type(pc, v)]);
 			case 3: case 5: return v < pc.think_threshold ? C_CHECK : C_BIRTH_MODE;
 			case 9: case 12: return C_ACTION;
 			case 8: case 10: case 11: case 13: case 14: return C_JUMP;
 			default: return C_UNUSED;
 		}
 	}
-	private String new_decode(int c, int v) {
+	static String new_decode(PlantConfig pc, int c, int v) {
 		int rows = pc.genome_rows;
 		switch (c) {
 			case 0: case 1: case 2: return "child type " + (c == 0 ? "left" : c == 1 ? "ahead" : "right") + ": "
-				+ (plant_type(v) == Plant.EMPTY ? "none" : Plant.type_names[plant_type(v)]) + "  (used when command 3 or 5 >= " + pc.think_threshold + ")";
+				+ (plant_type(pc, v) == Plant.EMPTY ? "none" : Plant.type_names[plant_type(pc, v)]) + "  (used when command 3 or 5 >= " + pc.think_threshold + ")";
 			case 3: case 5: return v < pc.think_threshold
 				? "check: " + (v % pc.check_mod < checks.length ? checks[v % pc.check_mod] : "always false")
 				: ">= " + pc.think_threshold + " -> this gene breeds (commands 0..2)";
-			case 9: return "action if both checks pass: " + todo(v);
+			case 9: return "action if both checks pass: " + todo(pc, v);
 			case 10: return "next gene if that action succeeded: " + v % rows;
 			case 11: return "next gene if that action failed: " + v % rows;
-			case 12: return "action if a check failed: " + todo(v) + (v > 2 ? "; before it — jump to the gene of command 8" : "");
+			case 12: return "action if a check failed: " + todo(pc, v) + (v > 2 ? "; before it — jump to the gene of command 8" : "");
 			case 8: return "gene to jump to before command 12 (when command 12 > 2): " + v % rows;
 			case 13: return "next gene if command 12 succeeded: " + v % rows;
 			case 14: return "next gene if command 12 failed: " + v % rows;
 			default: return "not used by think_new";
 		}
 	}
-	private String todo(int v) {
+	private static String todo(PlantConfig pc, int v) {
 		int k = v % pc.todo_mod;
 		return k < todos.length ? todos[k] : "nothing";
 	}
-	private Color old_color(int v) {
+	static Color old_color(int v) {
 		if (v < 3) {
 			return new Color(0xE6830A);
 		}
@@ -416,7 +425,7 @@ public class GenomeView extends JDialog {
 		}
 		return C_UNUSED;
 	}
-	private String old_decode(int v) {
+	static String old_decode(int v) {
 		if (v < 3) {
 			return "breed (children = cell+1 % 4, directions from " + v + ", type from cell+2) and move in direction " + v;
 		}
@@ -440,7 +449,7 @@ public class GenomeView extends JDialog {
 		}
 		return "nothing";
 	}
-	private static Color weight_color(float v) {
+	static Color weight_color(float v) {
 		double t = Math.min(1, Math.abs(v) / 2.0);
 		int base = 40;
 		return v >= 0 ? new Color(base + (int)(215 * t), base, base) : new Color(base, base, base + (int)(215 * t));

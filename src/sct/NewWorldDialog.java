@@ -43,13 +43,17 @@ public class NewWorldDialog extends JDialog {
 	private static final long serialVersionUID = 1L;
 
 	public static void open(Window owner, WorldBio world) {
-		NewWorldDialog d = new NewWorldDialog(owner, world);
+		open(owner, NewWorldPanel.initial(world), NewWorldPanel.creator(world));
+	}
+	//initial — с чем открыть, create — что сделать по «Создать» (мир в этом окне или на сервере, см. RemoteControl)
+	public static void open(Window owner, WorldSettings initial, java.util.function.Consumer<WorldSettings> create) {
+		NewWorldDialog d = new NewWorldDialog(owner, initial, create);
 		d.setVisible(true);
 	}
 
-	private NewWorldDialog(Window owner, WorldBio world) {
+	private NewWorldDialog(Window owner, WorldSettings initial, java.util.function.Consumer<WorldSettings> create) {
 		super(owner, "New world", ModalityType.APPLICATION_MODAL);
-		NewWorldPanel panel = new NewWorldPanel(world, this::dispose);
+		NewWorldPanel panel = new NewWorldPanel(initial, create, this::dispose);
 		setContentPane(panel);
 		setSize(980, 700);
 		setLocationRelativeTo(owner);
@@ -58,7 +62,7 @@ public class NewWorldDialog extends JDialog {
 	//содержимое диалога отдельно — его можно собрать и без окна (проверки, снимки)
 	public static class NewWorldPanel extends JPanel {
 		private static final long serialVersionUID = 1L;
-		private final WorldBio world;
+		private final java.util.function.Consumer<WorldSettings> create;
 		private final Runnable close;
 		private WorldSettings s;
 		//
@@ -82,14 +86,17 @@ public class NewWorldDialog extends JDialog {
 		private final javax.swing.JTextArea neuro_sensors = new javax.swing.JTextArea();
 		private Population neuro_shown;//чьи параметры сейчас в neuro_table
 		//в диалоге это задают популяции (численность, мозг, действия) — в таблице параметров не показываются
-		private static final java.util.Set<String> by_populations = java.util.Set.of(
+		static final java.util.Set<String> by_populations = java.util.Set.of(
 			"starting_bot_count", "starting_plant_count", "bot_brain", "bot_actions_off", "plant_actions_off");
 
 		public NewWorldPanel(WorldBio world, Runnable close) {
+			this(initial(world), creator(world), close);
+		}
+		public NewWorldPanel(WorldSettings initial, java.util.function.Consumer<WorldSettings> create, Runnable close) {
 			super(new BorderLayout(6, 6));
-			this.world = world;
+			this.create = create;
 			this.close = close;
-			this.s = (world.last_settings != null ? world.last_settings : WorldSettings.startup != null ? WorldSettings.startup : WorldSettings.capture()).copy();
+			this.s = initial.copy();
 			setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 			JTabbedPane tabs = new JTabbedPane();
 			tabs.addTab("World & species", world_tab());
@@ -411,38 +418,28 @@ public class NewWorldDialog extends JDialog {
 			s.interaction = ia;
 			populations_changed();
 		}
+		static WorldSettings initial(WorldBio world) {//настройки прошлого мира или запуска
+			return world.last_settings != null ? world.last_settings : WorldSettings.startup != null ? WorldSettings.startup : WorldSettings.capture();
+		}
+		static java.util.function.Consumer<WorldSettings> creator(WorldBio world) {//создать мир в этом окне
+			return s -> {
+				s.copy().apply(world);
+				world.last_settings = s.copy();//запоминаются только настройки, с которыми мир создался
+			};
+		}
 		private void create() {
 			try {
 				store_ui();
-				String warning = check_settings();
+				String warning = s.check();
 				if (warning != null && JOptionPane.showConfirmDialog(this, warning + System.lineSeparator() + System.lineSeparator() + "Создать мир все равно?", "Проверка настроек",
 						JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
 					return;
 				}
-				s.copy().apply(world);
-				world.last_settings = s.copy();//запоминаются только настройки, с которыми мир создался
+				create.accept(s.copy());
 				close.run();
 			}catch (RuntimeException e) {
 				JOptionPane.showMessageDialog(this, "Не удалось создать мир: " + e.getMessage());
 			}
-		}
-		//настройки, с которыми популяция заведомо не выживет; null — все в порядке
-		private String check_settings() {
-			StringBuilder sb = new StringBuilder();
-			for (Population p : s.populations) {
-				if (p.species == Species.PLANT && p.count > 0) {
-					PlantConfig c = p.plant_config;
-					int need = c.cost_birth + c.birth_min_energy;
-					if (need > c.energy_start_value) {
-						sb.append("«").append(p.name).append("»: росток рождается с энергией ").append(c.energy_start_value)
-							.append(", а для деления нужно cost_birth + birth_min_energy = ").append(need)
-							.append(". Ростки не фотосинтезируют (это делают листья), поэтому первое поколение не сможет")
-							.append(" размножиться и вымрет. Уменьшите cost_birth (до ").append(c.energy_start_value - c.birth_min_energy)
-							.append(") или увеличьте energy_start_value.").append(System.lineSeparator());
-					}
-				}
-			}
-			return sb.length() == 0 ? null : sb.toString().trim();
 		}
 		private JFileChooser chooser() {
 			JFileChooser fc = new JFileChooser(new File("saved worlds"));

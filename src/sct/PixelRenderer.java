@@ -19,7 +19,11 @@ public class PixelRenderer {
 	private static final int chain_color = Theme.rgb(255, 150, 0);
 	//
 	public BufferedImage render(WorldBio w) {
-		int s = Constant.size;
+		return render(w, w.draw_type, w.res_draw_type, Constant.size, w.render, true);
+	}
+	//кадр с заданными режимами и размером клетки s — веб-просмотр рисует свой кадр, не трогая режимы окна.
+	//overlays — королевы и выделение: они рисуются в пикселях Constant.size, поэтому только при s == Constant.size
+	public BufferedImage render(WorldBio w, int draw_type, int res_draw_type, int s, boolean bots, boolean overlays) {
 		int ww = Constant.world_scale[0];
 		int wh = Constant.world_scale[1];
 		if (tile == null || tw != ww * s || th != wh * s) {//тайл создается один раз, а не на каждый кадр
@@ -28,11 +32,13 @@ public class PixelRenderer {
 			tile = new BufferedImage(tw, th, BufferedImage.TYPE_INT_RGB);
 			px = ((DataBufferInt) tile.getRaster().getDataBuffer()).getData();
 		}
-		draw_background(w, ww, wh, s);
-		if (w.render) {
-			draw_bots(w, s);
+		draw_background(w, res_draw_type, ww, wh, s);
+		if (bots) {
+			draw_bots(w, draw_type, s);
+		}
+		if (bots && overlays && s == Constant.size) {
 			Graphics2D g = tile.createGraphics();
-			if (w.draw_type == 7) {//связи королев с подчиненными и сами королевы поверх
+			if (draw_type == 7) {//связи королев с подчиненными и сами королевы поверх
 				for (IBot o : w.objects) {
 					if (o instanceof Bot b && b.queen == 1 && b.killed == 0) {
 						b.queen_draw(g);
@@ -69,8 +75,7 @@ public class PixelRenderer {
 		}
 	}
 	//
-	private void draw_background(WorldBio w, int ww, int wh, int s) {
-		int mode = w.res_draw_type;
+	private void draw_background(WorldBio w, int mode, int ww, int wh, int s) {
 		if (mode == 0) {
 			Arrays.fill(px, Theme.world_bg);
 			return;
@@ -104,9 +109,9 @@ public class PixelRenderer {
 		}
 	}
 	//
-	private void draw_bots(WorldBio w, int s) {
-		int dt = w.draw_type;
+	private void draw_bots(WorldBio w, int dt, int s) {
 		int half = s / 2;
+		int len = (s - 1) / 2;//от центра до края клетки: при четном s длина half вышла бы в соседнюю клетку (и за край тайла)
 		for (IBot o : w.objects) {
 			if (!o.alive()) {
 				continue;
@@ -129,11 +134,11 @@ public class PixelRenderer {
 			int cx = x0 + half;
 			int cy = y0 + half;
 			int dir_color = dt == 7 ? queen_dir : Theme.direction;
-			line_from_center(cx, cy, b.rotate, half, dir_color);
+			line_from_center(cx, cy, b.rotate, len, dir_color);
 			if (dt == 7) {
 				for (int i = 0; i < 8; i++) {
 					if (b.has_chain(i)) {
-						line_from_center(cx, cy, i, half, chain_color);
+						line_from_center(cx, cy, i, len, chain_color);
 					}
 				}
 			}

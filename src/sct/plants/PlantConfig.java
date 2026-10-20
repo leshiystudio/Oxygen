@@ -144,6 +144,9 @@ public class PlantConfig {
 			"corpse_decay=50", "corpse_share=0.3", "root_feed=5", "trans_leaf_bonus=25", "trans_leaf_health=45",
 			"max_mind_diff_count=40", "percent_mutation_child=0.05"});
 	}
+	public static java.util.Set<String> preset_names() {//config, original, noleak, balanced
+		return PRESETS.keySet();
+	}
 	public static PlantConfig preset(String name) {
 		if (!PRESETS.containsKey(name)) {
 			throw new IllegalArgumentException("нет набора растений " + name + ", есть: " + PRESETS.keySet());
