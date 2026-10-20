@@ -1,23 +1,42 @@
-# Oxygen на сервере:  cp .env.example .env  (задать токен)  &&  docker compose up -d --build
+# Oxygen на сервере:  cp .env.example .env  (задать токены)  &&  docker compose up -d --build
+# Публикация наружу — туннелем CloudPub (профиль cloudpub, включен в .env.example через COMPOSE_PROFILES)
+# или портом хоста напрямую (OXYGEN_VIEW_BIND=0.0.0.0, OXYGEN_VIEW_PORT=80). Подробно — docs/docker-server.md.
 services:
   oxygen:
     build: .
     image: oxygen-server
     restart: unless-stopped
     ports:
-      - "${OXYGEN_VIEW_PORT:-80}:8080"                          # просмотр — для всех, только чтение
-      - "${OXYGEN_CONTROL_BIND:-127.0.0.1}:${OXYGEN_CONTROL_PORT:-8081}:8081"  # управление — по умолчанию только с самого сервера (SSH-туннель)
+      - "${OXYGEN_VIEW_BIND:-0.0.0.0}:${OXYGEN_VIEW_PORT:-80}:8080"              # просмотр — только чтение
+      - "${OXYGEN_CONTROL_BIND:-127.0.0.1}:${OXYGEN_CONTROL_PORT:-8081}:8081"    # управление — по умолчанию только с самого сервера (SSH-туннель)
     environment:
       OXYGEN_CONTROL_TOKEN: ${OXYGEN_CONTROL_TOKEN:-}
+      OXYGEN_TRUST_PROXY: ${OXYGEN_TRUST_PROXY:-0}                          # 1 — адрес зрителя из X-Forwarded-For туннеля (лимиты по зрителю, а не по туннелю)
       OXYGEN_ARGS: ${OXYGEN_ARGS:---resume --autosave 10}
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75}
     volumes:
       - type: volume
         source: worlds
-        target: /data/saved worlds                              # сохранения, настройки, autosave.oxw
-    stop_grace_period: 60s                                      # время на сохранение мира при остановке
+        target: /data/saved worlds                                          # сохранения, настройки, autosave.oxw
+    stop_grace_period: 60s                                                  # время на сохранение мира при остановке
     # mem_limit: 2g
     # cpus: 2
 
+  # Туннель CloudPub: публикует просмотр (и, если указать, управление) по постоянному адресу https://….cloudpub.ru
+  # без открытых портов на хосте. Адрес — в `docker compose logs cloudpub` и в личном кабинете CloudPub.
+  cloudpub:
+    image: cloudpub/cloudpub:latest
+    profiles: ["cloudpub"]
+    restart: unless-stopped
+    command: run
+    environment:
+      TOKEN: ${CLOUDPUB_TOKEN:-}
+      HTTP: ${CLOUDPUB_HTTP:-oxygen:8080}                                   # через запятую: oxygen:8080,oxygen:8081 — и управление (только с OXYGEN_CONTROL_TOKEN!)
+    depends_on:
+      - oxygen
+    volumes:
+      - cloudpub-config:/home/cloudpub                                      # агент и его адрес не меняются при перезапуске
+
 volumes:
   worlds:
+  cloudpub-config:

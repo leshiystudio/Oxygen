@@ -81,6 +81,7 @@ footer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding:
 		<button data-post="/api/speed?delta=1">faster</button>
 		<select id="speed" title="шагов за кадр"></select>
 		<select id="frame_ms" title="как часто обновляется картинка у всех зрителей"></select>
+		<select id="view_rps" title="сколько запросов в секунду зритель (адрес) может слать на порт просмотра; всплеск — втрое больше"></select>
 		<select id="brain_limit" title="как часто один зритель может запросить мозг существа (порт управления — без ограничения)"></select>
 		<button data-post="/api/again" data-confirm="Пересоздать мир с теми же настройками? Текущий мир пропадет, если не сохранен.">Again</button>
 	</span>
@@ -265,6 +266,9 @@ const levels = ["1", "2", "5", "10", "20", "50", "max"];
 levels.forEach((l, i) => $("speed").add(new Option(i < 6 ? l + " steps/frame" : l, i)));
 for (const ms of [200, 500, 1000, 2000, 5000, 10000]) $("frame_ms").add(new Option("frame " + (ms < 1000 ? ms + " ms" : ms / 1000 + " s"), ms));
 $("frame_ms").addEventListener("change", () => act("/api/frame?ms=" + $("frame_ms").value, "", "кадр для зрителей: раз в " + $("frame_ms").selectedOptions[0].text.slice(6)));
+const rps_name = r => r == 0 ? "view: no limit" : "view " + r + " req/s";
+for (const r of [0, 5, 10, 20, 50]) $("view_rps").add(new Option(rps_name(r), r));
+$("view_rps").addEventListener("change", () => { const r = $("view_rps").value; act(`/api/view-limit?rps=${r}&burst=${Math.max(10, r * 3)}`, "", "просмотр: " + rps_name(r).slice(5)); });
 const limit_name = sec => sec == 0 ? "brain: no limit" : "brain 1 / " + (sec < 60 ? sec + " s" : sec / 60 + " min");
 for (const sec of [0, 5, 10, 30, 60, 300]) $("brain_limit").add(new Option(limit_name(sec), sec));
 $("brain_limit").addEventListener("change", () => act("/api/brain-limit?sec=" + $("brain_limit").value, "", "мозг существа зрителю — " + limit_name($("brain_limit").value).slice(6)));
@@ -279,11 +283,15 @@ async function refresh() {
 	$("status").innerHTML = "";
 	const t = since(st);
 	$("status").title = "мир создан " + t.full;
-	const parts = [["started", t.when], ["running", t.run], ["step", st.steps], ["bots", st.bots], ["plants", st.plants], ["steps/s", Math.round(st.steps_per_sec)], ["ms/step", st.ms_per_step.toFixed(2)]];
+	const parts = [["started", t.when], ["running", t.run], ["step", st.steps], ["bots", st.bots], ["plants", st.plants], ["steps/s", Math.round(st.steps_per_sec)], ["streams", st.streams], ["ms/step", st.ms_per_step.toFixed(2)]];
 	for (const [k, v] of parts) $("status").append(k + " ", el("b", {}, String(v)), "   ");
 	$("status").append(st.paused ? "· paused" : "· " + st.speed);
 	$("b_pause").textContent = st.paused ? "Resume" : "Pause";
 	if (document.activeElement !== $("speed")) $("speed").value = st.speed_level;
+	if (document.activeElement !== $("view_rps")) {
+		if (![...$("view_rps").options].some(o => o.value == st.view_rps)) $("view_rps").add(new Option(rps_name(st.view_rps), st.view_rps));
+		$("view_rps").value = st.view_rps;
+	}
 	if (document.activeElement !== $("brain_limit")) {
 		if (![...$("brain_limit").options].some(o => o.value == st.brain_limit_sec)) $("brain_limit").add(new Option(limit_name(st.brain_limit_sec), st.brain_limit_sec));
 		$("brain_limit").value = st.brain_limit_sec;

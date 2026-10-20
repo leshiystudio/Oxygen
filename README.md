@@ -44,7 +44,7 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 настройкам, сохранения. Пульт с рабочего компьютера — `sct.RemoteControl` с тем же диалогом New world.
 
 ```bash
-cp .env.example .env && docker compose up -d --build     # просмотр: http://<сервер>/, управление: :8081 (только с сервера)
+cp .env.example .env && docker compose up -d --build     # наружу — туннелем CloudPub (CLOUDPUB_TOKEN в .env), управление: :8081 (только с сервера)
 ```
 
 Подробно — [docs/docker-server.md](docs/docker-server.md).

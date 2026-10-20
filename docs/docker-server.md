@@ -12,6 +12,25 @@
 Итого нагрузка на рендер — не больше «число разных слоев × 1000 / frame_ms» кадров в секунду
 (проверено: 280 запросов/с от 15 зрителей на 3 слоях — 3 рендера/с при кадре раз в секунду).
 
+**Доставка кадров — потоком.** Страница открывает `/stream` — один долгий ответ
+`multipart/x-mixed-replace`, в который сервер сам кладет новый кадр слоя в начале каждого отрезка
+(без опроса; на паузе — тишина). Кадр берется из того же кеша, так что рендер не зависит от числа
+потоков. Не получилось (лимит потоков, прокси копит ответ) — страница сама переходит на опрос
+`/frame.png` и через минуту пробует поток снова; что сейчас — видно в строке *frame* (`stream` / `polling`).
+Поток можно смотреть и без страницы: `<img src="http://<сервер>/stream?mode=0&bg=1">`.
+
+**Размер клетки 1–2 px — один кадр.** При 1 и 2 px линии направления нет и семечко занимает всю клетку,
+поэтому сервер рисует и шлет 1 px на клетку, а растягивает браузер: вчетверо меньше пикселей
+(200 x 200: 14 КБ вместо ~55 КБ). 3 и 5 px — с направлениями, как в программе.
+
+**Лимит запросов зрителя.** На порту просмотра каждый адрес — не больше `--view-rps` запросов в секунду
+(по умолчанию 10, всплеск `--view-burst` 30), сверх — `429`; потоков с адреса — не больше
+`--streams-per-ip` (6), всего — `--max-streams` (500). Обычной странице хватает с запасом (поток + статус
+раз в секунду + графики раз в 3 с). Меняется на порту управления (*view 10 req/s*); порт управления не
+ограничен. За обратным прокси все зрители — один адрес: тогда лимит ставят на прокси
+(`limit_req`, `limit_conn` в nginx), а у сервера поднимают или выключают (`--view-rps 0`); для потока в
+nginx нужно `proxy_buffering off` (сервер шлет и `X-Accel-Buffering: no`).
+
 | Порт в контейнере | На хосте (по умолчанию) | Что там |
 |---|---|---|
 | 8080 | `80`, для всех | **Просмотр, только чтение**: мир (режимы ботов и фона и масштаб выбираются у зрителя и на мир не влияют), численность популяций, графики, CSV истории |
@@ -38,13 +57,40 @@ think_new (32 гена x 23 команды, рамка — активный ге
 клетки не засчитывается, порт управления не ограничен. Если перед сервером стоит обратный прокси,
 все зрители для сервера — один адрес, и ограничение становится общим.
 
-## Запуск
+## Запуск через CloudPub (основной вариант)
+
+Туннель [CloudPub](https://cloudpub.ru) публикует просмотр по постоянному адресу `https://….cloudpub.ru`:
+порты хоста наружу не открываются, HTTPS дает туннель. В `docker-compose.yml` это сервис `cloudpub`
+(профиль `cloudpub`); `.env.example` уже настроен на этот вариант.
 
 ```bash
 git clone … && cd Oxygen
-cp .env.example .env          # задать OXYGEN_CONTROL_TOKEN
+cp .env.example .env          # CLOUDPUB_TOKEN — из личного кабинета CloudPub; OXYGEN_CONTROL_TOKEN
+docker compose up -d --build  # поднимет oxygen и cloudpub (COMPOSE_PROFILES=cloudpub в .env)
+docker compose logs cloudpub  # публичный адрес; он же — в личном кабинете
+```
+
+- **Что публикуется** — `CLOUDPUB_HTTP`: по умолчанию `oxygen:8080` (только просмотр).
+  `oxygen:8080,oxygen:8081` — и управление, отдельным адресом; тогда `OXYGEN_CONTROL_TOKEN` обязателен
+  (длинный случайный: `openssl rand -hex 24`). Basic auth самого CloudPub (`--auth basic`) на управление
+  не ставить: он занимает тот же заголовок `Authorization`, что и токен управления.
+- **Адрес не меняется** между перезапусками, пока жив том `cloudpub-config` (там агент CloudPub).
+- **Порты на хосте** — только `127.0.0.1` (`OXYGEN_VIEW_PORT=8090`, `8081`): с самого сервера и через SSH.
+  Так туннель — единственная дорога снаружи.
+- **Адрес зрителя.** За туннелем все запросы приходят от контейнера CloudPub, и лимиты «по адресу» стали бы
+  общими на всех. `OXYGEN_TRUST_PROXY=1` (в `.env.example` включен): для соединений из внутренней сети
+  адрес зрителя берется из `X-Forwarded-For` (самый правый публичный адрес) или `X-Real-IP`. После запуска
+  откройте `https://<адрес туннеля>/api/whoami`: в `client` должен быть ваш внешний адрес. Если там
+  внутренний адрес — CloudPub заголовки не передает; тогда лимиты общие, и их стоит поднять
+  (`--view-rps 50 --brain-limit 2` в `OXYGEN_ARGS`).
+- **Поток кадров** через туннель: если туннель копит ответ, страница через 8 с сама перейдет на опрос
+  (в строке *frame* будет `polling`) — смотреть можно и так.
+
+## Запуск без туннеля
+
+```bash
+cp .env.example .env          # убрать COMPOSE_PROFILES, OXYGEN_VIEW_BIND=0.0.0.0, OXYGEN_VIEW_PORT=80, OXYGEN_TRUST_PROXY=0
 docker compose up -d --build
-docker compose logs -f
 ```
 
 Просмотр — `http://<сервер>/`. Управление по умолчанию снаружи недоступно — через SSH-туннель:
@@ -62,7 +108,11 @@ ssh -L 8081:localhost:8081 user@server     # затем http://localhost:8081/ �
 | Переменная | По умолчанию | Смысл |
 |---|---|---|
 | `OXYGEN_CONTROL_TOKEN` | пусто | пароль порта управления; пусто — без пароля |
-| `OXYGEN_VIEW_PORT` | `80` | порт просмотра на хосте |
+| `COMPOSE_PROFILES` | — (в `.env.example`: `cloudpub`) | `cloudpub` — поднять туннель |
+| `CLOUDPUB_TOKEN` | пусто | токен агента CloudPub |
+| `CLOUDPUB_HTTP` | `oxygen:8080` | что публикует туннель, через запятую |
+| `OXYGEN_TRUST_PROXY` | `0` (в `.env.example`: `1`) | адрес зрителя — из `X-Forwarded-For` / `X-Real-IP` прокси во внутренней сети |
+| `OXYGEN_VIEW_BIND` / `OXYGEN_VIEW_PORT` | `0.0.0.0` / `80` (в `.env.example`: `127.0.0.1` / `8090`) | где слушать просмотр на хосте |
 | `OXYGEN_CONTROL_BIND` / `OXYGEN_CONTROL_PORT` | `127.0.0.1` / `8081` | где слушать управление на хосте |
 | `OXYGEN_ARGS` | `--resume --autosave 10` | аргументы сервера (ниже) |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | параметры JVM |
@@ -77,6 +127,9 @@ ssh -L 8081:localhost:8081 user@server     # затем http://localhost:8081/ �
 | `--load файл.oxw` | стартовать с сохраненного мира: путь или имя файла в `saved worlds` (важнее `--resume`) |
 | `--settings файл.properties` | стартовать с настроек диалога «Новый мир» (тоже имя в `saved worlds`) |
 | `--brain-limit N` | как часто один зритель может запросить мозг существа, с (0 — без ограничения) |
+| `--trust-proxy` | то же, что `OXYGEN_TRUST_PROXY=1` |
+| `--view-rps N`, `--view-burst N` | запросов в секунду с адреса на порту просмотра и допустимый всплеск (0 — без ограничения) |
+| `--streams-per-ip N`, `--max-streams N` | потоков кадров с одного адреса и всего |
 | `--frame-ms N` | как часто обновляется кадр у зрителей, мс (не меньше 200); меняется и на порту управления |
 | `--view-port`, `--control-port` | порты внутри контейнера; `--control-port 0` — без управления вовсе |
 | `--token T` | токен вместо `OXYGEN_CONTROL_TOKEN` |
@@ -128,8 +181,10 @@ java -Djava.awt.headless=true -cp out sct.Server --view-port 8080 --control-port
 
 ## HTTP API
 
-Просмотр и управление: `GET /frame.png?mode=&bg=&scale=&bots=`, `GET /api/status`,
+Просмотр и управление: `GET /stream?mode=&bg=&scale=&bots=` (поток кадров), `GET /frame.png?mode=&bg=&scale=&bots=`, `GET /api/status`,
 `GET /api/history?group=&n=`, `GET /api/history.csv`.
+
+Каким адресом сервер считает зрителя: `GET /api/whoami`.
 
 Мозг существа: `GET /api/brain?x=&y=` — JSON (`mode`: `bot_genome`, `plant_new`, `plant_old`,
 `neuro`, `none`); зрителю при превышении лимита — `429` с `Retry-After`.
@@ -140,7 +195,7 @@ java -Djava.awt.headless=true -cp out sct.Server --view-port 8080 --control-port
 Кадр отдает заголовки `X-Frame-Step`, `X-Frame-Time`, `X-Frame-Period`, `X-Next-Frame` (мс до
 следующего кадра) и `ETag`; с `If-None-Match` уже показанного кадра — `304`.
 
-Только управление (POST — с заголовком `X-Oxygen: 1`): `POST /api/pause|resume|step|again`, `POST /api/frame?ms=`, `POST /api/brain-limit?sec=`,
+Только управление (POST — с заголовком `X-Oxygen: 1`): `POST /api/pause|resume|step|again`, `POST /api/frame?ms=`, `POST /api/brain-limit?sec=`, `POST /api/view-limit?rps=&burst=`,
 `POST /api/speed?level=0..6` или `?delta=±1`, `GET /api/settings`, `POST /api/world/new[?force=1]`
 (тело — `.properties`), `GET /api/files`, `POST /api/save?name=` (`.oxw` — мир, `.properties` — тело
 запроса), `POST /api/load?name=`, `GET /api/download?name=`, `POST /api/delete?name=`.

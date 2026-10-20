@@ -26,7 +26,8 @@ import com.sun.net.httpserver.HttpServer;
 
 //Мир без окна для сервера: симуляция идет на полной скорости, кадр рисуется только по запросу зрителя.
 //  java -Djava.awt.headless=true -cp out sct.Server [--view-port 8080] [--control-port 8081] [--token T]
-//       [--resume] [--load файл.oxw] [--settings файл.properties] [--autosave минут] [--frame-ms 1000] [--brain-limit 10] [--preset ... --set ...]
+//       [--resume] [--load файл.oxw] [--settings файл.properties] [--autosave минут] [--frame-ms 1000] [--brain-limit 10]
+//       [--trust-proxy] [--view-rps 10] [--view-burst 30] [--streams-per-ip 6] [--max-streams 500] [--preset ... --set ...]
 //Порт просмотра — только чтение: страница, кадр, статус, графики. Порт управления — то же плюс
 //пауза, скорость, новый мир по настройкам (.properties как у диалога «Новый мир»), сохранение и загрузка.
 //Токен управления — --token или переменная OXYGEN_CONTROL_TOKEN; без токена управление открыто всем, кто достучится до порта.
@@ -43,6 +44,7 @@ public class Server {
 		boolean resume = false;
 		String load = null, settings = null;
 		token = System.getenv("OXYGEN_CONTROL_TOKEN");
+		trust_proxy = "1".equals(System.getenv("OXYGEN_TRUST_PROXY")) || "true".equalsIgnoreCase(System.getenv("OXYGEN_TRUST_PROXY"));
 		List<String> rest = new ArrayList<String>();
 		for (int i = 0; i < args.length; i++) {
 			switch (args[i]) {
@@ -52,6 +54,11 @@ public class Server {
 				case "--autosave": autosave_min = Integer.parseInt(args[++i]); break;
 				case "--frame-ms": frame_ms = Math.max(min_frame_ms, Long.parseLong(args[++i])); break;
 				case "--brain-limit": brain_limit_sec = Math.max(0, Integer.parseInt(args[++i])); break;
+				case "--trust-proxy": trust_proxy = true; break;
+				case "--view-rps": view_rps = Math.max(0, Double.parseDouble(args[++i])); break;
+				case "--view-burst": view_burst = Math.max(1, Integer.parseInt(args[++i])); break;
+				case "--streams-per-ip": streams_per_ip = Math.max(0, Integer.parseInt(args[++i])); break;
+				case "--max-streams": max_streams = Math.max(0, Integer.parseInt(args[++i])); break;
 				case "--resume": resume = true; break;
 				case "--load": load = args[++i]; break;
 				case "--settings": settings = args[++i]; break;
@@ -82,13 +89,16 @@ public class Server {
 		//
 		HttpServer view = HttpServer.create(new InetSocketAddress(view_port), 0);
 		route(view, false);
-		view.setExecutor(Executors.newFixedThreadPool(4));
+		view.setExecutor(Executors.newVirtualThreadPerTaskExecutor());//долгие соединения потока кадров дешевы; число запросов держит лимит по IP
 		view.start();
 		if (control_port > 0) {
 			HttpServer control = HttpServer.create(new InetSocketAddress(control_port), 0);
 			route(control, true);
 			control.setExecutor(Executors.newFixedThreadPool(2));
 			control.start();
+		}
+		if (trust_proxy) {
+			log("адрес зрителя — из X-Forwarded-For / X-Real-IP прокси во внутренней сети (проверка: /api/whoami)");
 		}
 		log("просмотр: порт " + view_port + ", управление: " + (control_port > 0 ? "порт " + control_port : "выключено")
 			+ (control_port > 0 && token == null ? " (без токена — откройте порт только для своих)" : ""));
@@ -166,9 +176,15 @@ public class Server {
 		});
 		on(srv, "/view", control, (ex, q) -> send_resource(ex, "view.html"));
 		on(srv, "/frame.png", control, Server::frame);
+		on(srv, "/stream", control, Server::stream);
 		on(srv, "/api/status", control, (ex, q) -> json(ex, status()));
 		on(srv, "/api/history", control, Server::history);
 		on(srv, "/api/brain", control, (ex, q) -> brain(ex, q, control));
+		on(srv, "/api/whoami", control, (ex, q) -> json(ex, "{\"client\":" + str(ip(ex))//каким адресом сервер считает зрителя (лимиты — по нему)
+			+ ",\"peer\":" + str(ex.getRemoteAddress().getAddress().getHostAddress())
+			+ ",\"x_forwarded_for\":" + str(ex.getRequestHeaders().getFirst("X-Forwarded-For"))
+			+ ",\"x_real_ip\":" + str(ex.getRequestHeaders().getFirst("X-Real-IP"))
+			+ ",\"trust_proxy\":" + trust_proxy + "}"));
 		on(srv, "/api/history.csv", control, (ex, q) -> {
 			String csv;
 			w.lock.lock();
@@ -199,6 +215,17 @@ public class Server {
 		on(srv, "/api/frame", true, post((ex, q) -> {//интервал кадров для всех зрителей
 			frame_ms = Math.max(min_frame_ms, Long.parseLong(q.getOrDefault("ms", "1000")));
 			log("кадр раз в " + frame_ms + " мс");
+			ok(ex);
+		}));
+		on(srv, "/api/view-limit", true, post((ex, q) -> {//запросов в секунду с адреса на порту просмотра (0 — без ограничения)
+			view_rps = Math.max(0, Double.parseDouble(q.getOrDefault("rps", "10")));
+			if (q.containsKey("burst")) {
+				view_burst = Math.max(1, Integer.parseInt(q.get("burst")));
+			}
+			synchronized (buckets) {
+				buckets.clear();
+			}
+			log("просмотр — не больше " + view_rps + " запросов/с с адреса (всплеск " + view_burst + ")");
 			ok(ex);
 		}));
 		on(srv, "/api/brain-limit", true, post((ex, q) -> {//как часто зритель может запросить мозг существа
@@ -310,6 +337,11 @@ public class Server {
 					send(ex, 401, "text/plain", "нужен токен управления");
 					return;
 				}
+				if (!control && !allow(ip(ex))) {//порт просмотра: не больше view_rps запросов в секунду с адреса
+					ex.getResponseHeaders().set("Retry-After", "1");
+					json(ex, 429, "{\"ok\":false,\"error\":\"слишком много запросов\"}");
+					return;
+				}
 				h.handle(ex, query(ex));
 			}catch (IllegalArgumentException | IOException e) {
 				json(ex, 400, "{\"ok\":false,\"error\":" + str(String.valueOf(e.getMessage())) + "}");
@@ -320,6 +352,70 @@ public class Server {
 				ex.close();
 			}
 		});
+	}
+	//
+	//ЛИМИТ ЗАПРОСОВ ПО АДРЕСУ (порт просмотра): корзина токенов — в среднем view_rps в секунду, всплеск до view_burst.
+	//Защищает поток симуляции (status, history берут блокировку мира) и канал (кадр — десятки КБ).
+	//Порт управления не ограничен. За обратным прокси все зрители — один адрес: тогда лимит лучше ставить на прокси.
+	//
+	static volatile double view_rps = 10;
+	static volatile int view_burst = 30;
+	private static final Map<String, double[]> buckets = new HashMap<String, double[]>();//адрес -> {токены, когда пополнено}
+	//За туннелем или прокси (CloudPub, nginx) все зрители приходят с адреса прокси — лимиты стали бы общими.
+	//--trust-proxy / OXYGEN_TRUST_PROXY=1: если соединение пришло из внутренней сети (docker, localhost), адрес
+	//зрителя — самый правый публичный в X-Forwarded-For (правее — внутренние узлы туннеля, левее — что прислал
+	//сам зритель, ему не верим) или X-Real-IP. Снаружи заголовкам не верим вовсе: иначе любой обошел бы лимит,
+	//подставив чужой адрес. Проверка — GET /api/whoami.
+	static volatile boolean trust_proxy = false;
+	static String ip(HttpExchange ex) {
+		java.net.InetAddress peer = ex.getRemoteAddress().getAddress();
+		if (trust_proxy && (peer.isLoopbackAddress() || peer.isSiteLocalAddress() || peer.isLinkLocalAddress())) {
+			String xff = ex.getRequestHeaders().getFirst("X-Forwarded-For");
+			if (xff != null && !xff.isBlank()) {
+				String[] hops = xff.split(",");
+				for (int i = hops.length - 1; i >= 0; i--) {
+					String hop = hops[i].trim();
+					if (is_public(hop)) {
+						return hop;
+					}
+				}
+			}
+			String real = ex.getRequestHeaders().getFirst("X-Real-IP");
+			if (real != null && !real.isBlank()) {
+				return real.trim();
+			}
+		}
+		return peer.getHostAddress();
+	}
+	private static boolean is_public(String ip) {//только адрес цифрами: имя не разрешаем (DNS на каждый запрос)
+		if (ip.isEmpty() || !ip.matches("[0-9a-fA-F:.]+")) {
+			return false;
+		}
+		try {
+			java.net.InetAddress a = java.net.InetAddress.getByName(ip);
+			return !(a.isLoopbackAddress() || a.isSiteLocalAddress() || a.isLinkLocalAddress() || a.isAnyLocalAddress());
+		}catch (java.net.UnknownHostException e) {
+			return false;
+		}
+	}
+	static boolean allow(String ip) {
+		if (view_rps <= 0) {
+			return true;
+		}
+		long now = System.nanoTime();
+		synchronized (buckets) {
+			if (buckets.size() > 20_000) {//давно молчащие адреса (корзина полна) — вон
+				buckets.values().removeIf(b -> b[0] + (now - b[1]) / 1e9 * view_rps >= view_burst);
+			}
+			double[] b = buckets.computeIfAbsent(ip, k -> new double[]{view_burst, now});
+			b[0] = Math.min(view_burst, b[0] + (now - b[1]) / 1e9 * view_rps);
+			b[1] = now;
+			if (b[0] < 1) {
+				return false;
+			}
+			b[0] -= 1;
+			return true;
+		}
 	}
 	//изменения — только POST с заголовком X-Oxygen: форма или картинка с чужого сайта его не пришлет (защита от CSRF)
 	private static Handler post(Handler h) {
@@ -383,18 +479,23 @@ public class Server {
 	};
 	static volatile int renders = 0;//сколько кадров нарисовано — для статуса (renders_per_sec)
 	static volatile double renders_per_sec = 0;
-	private static void frame(HttpExchange ex, Map<String, String> q) throws IOException {
+	//размер клетки: при 1 и 2 px линии направления нет ((s - 1) / 2 = 0) и семечко — вся клетка, то есть кадр 2 px —
+	//тот же кадр 1 px, растянутый вдвое; растягивает браузер, а рисуем и шлем вчетверо меньше пикселей
+	private static int scale(Map<String, String> q) {
+		int scale = clamp(q.get("scale"), 1, 1, Math.max(Constant.size, 8));
+		return scale == 2 ? 1 : scale;
+	}
+	private static Frame frame_for(Map<String, String> q) throws IOException {
 		int mode = clamp(q.get("mode"), 0, 0, Constant.draw_type_names.length - 1);
 		int bg = clamp(q.get("bg"), 0, 0, Constant.res_type_names.length - 1);
-		int scale = clamp(q.get("scale"), 2, 1, Math.max(Constant.size, 8));
+		int scale = scale(q);
 		boolean bots = !"0".equals(q.get("bots"));
 		String key = mode + "/" + bg + "/" + scale + "/" + bots + "/" + w.population;
 		long period = frame_ms;
-		Frame f;
 		synchronized (renderer) {//одновременные запросы одного слоя: первый рисует, остальные берут его кадр
 			long now = System.currentTimeMillis();
 			long tick = now / period;
-			f = frames.get(key);
+			Frame f = frames.get(key);
 			if (f == null || f.tick() != tick) {
 				if (f != null && f.step() == w.steps) {//мир не сдвинулся — тот же кадр в новом отрезке
 					f = new Frame(tick, f.step(), f.time(), f.etag(), f.png());
@@ -410,25 +511,95 @@ public class Server {
 					}
 					ByteArrayOutputStream out = new ByteArrayOutputStream(64 * 1024);
 					ImageIO.write(img, "png", out);//сжатие — уже без блокировки мира
-					f = new Frame(tick, step, now, "\"" + key + "/" + w.population + "/" + step + "\"", out.toByteArray());
+					f = new Frame(tick, step, now, "\"" + key + "/" + step + "\"", out.toByteArray());
 					renders++;
 				}
 				frames.put(key, f);
 			}
+			return f;
 		}
-		long next = (f.tick() + 1) * period - System.currentTimeMillis();//когда будет следующий кадр
+	}
+	private static long next_frame_ms(Frame f) {//через сколько будет следующий кадр
+		return Math.max(0, (f.tick() + 1) * frame_ms - System.currentTimeMillis());
+	}
+	private static void frame(HttpExchange ex, Map<String, String> q) throws IOException {
+		Frame f = frame_for(q);
 		var h = ex.getResponseHeaders();
 		h.set("Cache-Control", "no-cache");
 		h.set("ETag", f.etag());
 		h.set("X-Frame-Step", String.valueOf(f.step()));
 		h.set("X-Frame-Time", String.valueOf(f.time()));
-		h.set("X-Frame-Period", String.valueOf(period));
-		h.set("X-Next-Frame", String.valueOf(Math.max(0, next)));
+		h.set("X-Frame-Period", String.valueOf(frame_ms));
+		h.set("X-Next-Frame", String.valueOf(next_frame_ms(f)));
 		if (f.etag().equals(ex.getRequestHeaders().getFirst("If-None-Match"))) {//этот кадр у зрителя уже есть
 			ex.sendResponseHeaders(304, -1);
 			return;
 		}
 		send(ex, 200, "image/png", f.png());
+	}
+	//
+	//ПОТОК КАДРОВ: один долгий ответ multipart/x-mixed-replace — сервер сам присылает новый кадр слоя в начале
+	//каждого отрезка, без опроса. Кадр берется из того же кеша (frame_for), так что рендер — по-прежнему раз за
+	//отрезок на слой, а не на зрителя. Мир на паузе — новых частей нет, только раз в keepalive_ms повтор
+	//(чтобы прокси не закрыли тихое соединение). Подходит и для <img src="/stream">.
+	//Соединений с адреса — не больше streams_per_ip, всего — не больше max_streams.
+	//
+	static volatile int streams_per_ip = 6;//с запасом: закрытый зрителем поток сервер замечает только при следующей записи (до отрезка)
+	static volatile int max_streams = 500;
+	private static final long keepalive_ms = 20_000;
+	private static final String boundary = "oxygenframe";
+	private static final Map<String, Integer> streams = new HashMap<String, Integer>();//адрес -> открытых потоков
+	static volatile int streams_open = 0;
+	private static void stream(HttpExchange ex, Map<String, String> q) throws IOException {
+		String ip = ip(ex);
+		synchronized (streams) {
+			if (streams_open >= max_streams || streams.getOrDefault(ip, 0) >= streams_per_ip) {
+				ex.getResponseHeaders().set("Retry-After", "10");
+				json(ex, 429, "{\"ok\":false,\"error\":\"слишком много потоков — смотрите кадрами\"}");
+				return;
+			}
+			streams.merge(ip, 1, Integer::sum);
+			streams_open++;
+		}
+		try {
+			var h = ex.getResponseHeaders();
+			h.set("Content-Type", "multipart/x-mixed-replace; boundary=" + boundary);
+			h.set("Cache-Control", "no-cache, no-store");
+			h.set("X-Accel-Buffering", "no");//nginx: не копить поток у себя
+			h.set("X-Content-Type-Options", "nosniff");
+			ex.sendResponseHeaders(200, 0);//0 — тело частями (chunked), длина заранее неизвестна
+			OutputStream out = ex.getResponseBody();
+			String last = null;
+			long last_sent = 0;
+			long population = w.population;
+			while (w.population == population) {//новый мир — другой ключ кеша и, может быть, размер: клиент переподключится
+				Frame f = frame_for(q);
+				long now = System.currentTimeMillis();
+				if (!f.etag().equals(last) || now - last_sent >= keepalive_ms) {
+					String head = "--" + boundary + "\r\nContent-Type: image/png\r\nContent-Length: " + f.png().length
+						+ "\r\nX-Frame-Step: " + f.step() + "\r\nX-Frame-Time: " + f.time() + "\r\nX-Frame-Period: " + frame_ms + "\r\n\r\n";
+					out.write(head.getBytes(StandardCharsets.US_ASCII));
+					out.write(f.png());
+					out.write("\r\n".getBytes(StandardCharsets.US_ASCII));
+					out.flush();//зритель ушел — здесь IOException, поток закрывается
+					last = f.etag();
+					last_sent = now;
+				}
+				try {
+					Thread.sleep(next_frame_ms(f) + 20 + (long) (Math.random() * 80));//в начале следующего отрезка, вразброс
+				}catch (InterruptedException e) {
+					return;
+				}
+			}
+		}catch (IOException e) {
+			//зритель закрыл вкладку или сменил слой — обычное завершение потока
+		}finally {
+			synchronized (streams) {
+				streams.merge(ip, -1, Integer::sum);
+				streams.remove(ip, 0);
+				streams_open--;
+			}
+		}
 	}
 	//
 	//МОЗГ СУЩЕСТВА по координатам — единоразовый снимок (BrainInfo). Зрителю — не чаще раза в brain_limit_sec
@@ -439,7 +610,7 @@ public class Server {
 	private static void brain(HttpExchange ex, Map<String, String> q, boolean control) throws IOException {
 		int x = Integer.parseInt(q.getOrDefault("x", "0"));
 		int y = Integer.parseInt(q.getOrDefault("y", "0"));
-		String ip = ex.getRemoteAddress().getAddress().getHostAddress();
+		String ip = ip(ex);
 		long now = System.currentTimeMillis();
 		long limit = brain_limit_sec * 1000L;
 		if (!control && limit > 0) {
@@ -504,6 +675,9 @@ public class Server {
 				.append(",\"renders\":").append(renders)
 				.append(",\"frame_ms\":").append(frame_ms)
 				.append(",\"brain_limit_sec\":").append(brain_limit_sec)
+				.append(",\"view_rps\":").append(num(view_rps))
+				.append(",\"view_burst\":").append(view_burst)
+				.append(",\"streams\":").append(streams_open)
 				.append(",\"bots\":").append(w.b_count)
 				.append(",\"seeds\":").append(w.org_count)
 				.append(",\"plants\":").append(last < 0 ? 0 : (int) History.data[History.PLANTS][last])

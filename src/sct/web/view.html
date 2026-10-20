@@ -88,7 +88,7 @@ table.pg td.on { outline: 2px solid #fff; outline-offset: -2px; }
 		<h3>Picture</h3>
 		<label>bots <select id="mode"></select></label>
 		<label>background <select id="bg"></select></label>
-		<label>cell, px <select id="scale"><option>1</option><option selected>2</option><option>3</option><option>5</option></select></label>
+		<label>cell, px <select id="scale" title="при 1 и 2 px картинка одна и та же — сервер шлет 1 px, браузер растягивает"><option value="1" selected>1–2</option><option value="3">3</option><option value="5">5</option></select></label>
 		<label title="частоту кадров задает сервер — одну для всех зрителей">frame <span id="frame_info" style="color:var(--muted);font-variant-numeric:tabular-nums">–</span></label>
 		<label>show bots <input type="checkbox" id="bots" checked></label>
 		<label title="мир замкнут: края сшиты, как в окне программы">closed world (tiles) <input type="checkbox" id="wrap" checked></label>
@@ -169,44 +169,115 @@ function fit() {
 	view = { k, x: (stage.clientWidth - img.naturalWidth * k) / 2, y: (stage.clientHeight - img.naturalHeight * k) / 2 };
 	apply_view();
 }
-//кадры — по часам сервера: он сообщает шаг и время кадра и когда будет следующий (X-Next-Frame);
-//кадр, который уже показан, сервер не шлет повторно (ETag -> 304). Частоту зритель не выбирает.
-let frame_timer = null, frame_seq = 0, frame_etag = null, frame_key = "";
-function frame_url() {
-	return location.origin + `/frame.png?mode=${$("mode").value || 0}&bg=${$("bg").value || 0}&scale=${$("scale").value}&bots=${$("bots").checked ? 1 : 0}`;
+//кадры — по часам сервера. Основной путь — поток (/stream): сервер сам присылает новый кадр слоя в начале
+//каждого отрезка, без опроса. Запасной — опрос (/frame.png: X-Next-Frame, ETag -> 304), если поток недоступен:
+//лимит потоков, прокси копит ответ. Частоту зритель не выбирает.
+let frame_gen = 0, frame_timer = null, retry_timer = null, frame_etag = null, frame_key = "", stream_ctl = null, stream_fails = 0;
+function layer_query() {
+	return `mode=${$("mode").value || 0}&bg=${$("bg").value || 0}&scale=${$("scale").value}&bots=${$("bots").checked ? 1 : 0}`;
 }
-async function load_frame() {
+function show_info(step, time, period, how) {
+	$("frame_info").textContent = `step ${step} · ${new Date(time).toLocaleTimeString()} · every ${(period / 1000).toFixed(period % 1000 ? 1 : 0)} s · ${how}`;
+}
+async function show_png(blob, gen) {
+	const url = URL.createObjectURL(blob);
+	if (gen !== frame_gen) { URL.revokeObjectURL(url); return; }
+	const old_w = img.naturalWidth, old = img.src;
+	await new Promise(ok => { img.onload = ok; img.onerror = ok; img.src = url; });
+	if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+	if (!fitted) { fit(); fitted = true; }
+	else if (old_w && old_w !== img.naturalWidth) { view.k *= old_w / img.naturalWidth; }//другой размер клетки — та же видимая область
+	apply_view();
+}
+function stop_frames() {
+	frame_gen++;//старые поток и опрос увидят другое поколение и закончатся
 	clearTimeout(frame_timer);
-	const seq = ++frame_seq;//смена режима посреди загрузки — старый ответ не нужен
-	if (document.hidden) return;//вкладка скрыта — кадры не запрашиваем (visibilitychange запустит снова)
-	const url_now = frame_url();
+	clearTimeout(retry_timer);
+	if (stream_ctl) { stream_ctl.abort(); stream_ctl = null; }
+}
+function start_frames() {//смена слоя, вкладка снова видна, обрыв потока
+	stop_frames();
+	if (document.hidden) return;//скрытая вкладка ничего не получает
+	const gen = frame_gen;
+	if (stream_fails < 2) {
+		start_stream(gen);
+	} else {
+		load_frame(gen);
+		retry_timer = setTimeout(() => { stream_fails = 0; if (gen === frame_gen) start_frames(); }, 60000);//через минуту — снова попробовать поток
+	}
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) stop_frames(); else start_frames(); });
+
+//---- поток: multipart/x-mixed-replace, части разбираются руками — так видны шаг и время каждого кадра
+function find(buf, seq, from) {
+	outer: for (let i = from; i <= buf.length - seq.length; i++) {
+		for (let k = 0; k < seq.length; k++) if (buf[i + k] !== seq[k]) continue outer;
+		return i;
+	}
+	return -1;
+}
+const CRLF2 = [13, 10, 13, 10];
+async function start_stream(gen) {
+	const ctl = new AbortController();
+	stream_ctl = ctl;
+	let got = false;
+	const watchdog = setTimeout(() => { if (!got) ctl.abort(); }, 8000);//кадра нет 8 с — прокси копит поток, лучше опрос
+	try {
+		const r = await fetch(location.origin + "/stream?" + layer_query(), { cache: "no-store", signal: ctl.signal });
+		if (!r.ok || !r.body) throw new Error(r.status);
+		const reader = r.body.getReader();
+		let buf = new Uint8Array(0);
+		for (;;) {
+			for (;;) {//все целые части, что уже пришли
+				const he = find(buf, CRLF2, 0);
+				if (he < 0) break;
+				const head = new TextDecoder().decode(buf.subarray(0, he));
+				const h = {};
+				for (const line of head.split("\r\n")) { const c = line.indexOf(":"); if (c > 0) h[line.slice(0, c).trim().toLowerCase()] = line.slice(c + 1).trim(); }
+				const len = parseInt(h["content-length"] || "-1");
+				if (len < 0) throw new Error("bad part");
+				if (buf.length < he + 4 + len) break;//тело еще не дошло
+				const body = buf.slice(he + 4, he + 4 + len);
+				buf = buf.slice(Math.min(buf.length, he + 4 + len + 2));//+ \r\n после тела
+				got = true;
+				stream_fails = 0;
+				await show_png(new Blob([body], { type: "image/png" }), gen);
+				show_info(h["x-frame-step"], parseInt(h["x-frame-time"] || "0"), parseInt(h["x-frame-period"] || "0"), "stream");
+			}
+			const { value, done } = await reader.read();
+			if (done) break;
+			const nb = new Uint8Array(buf.length + value.length);
+			nb.set(buf); nb.set(value, buf.length);
+			buf = nb;
+		}
+	} catch (e) {}
+	clearTimeout(watchdog);
+	if (gen !== frame_gen) return;//сменили слой или скрыли вкладку — новый старт уже идет
+	if (!got) stream_fails++;
+	frame_timer = setTimeout(start_frames, got ? 300 : 1000);//поток закрылся (новый мир) — переподключиться; не открылся — еще раз или опрос
+}
+
+//---- опрос — запасной путь
+async function load_frame(gen) {
+	if (gen !== frame_gen || document.hidden) return;
+	const url_now = location.origin + "/frame.png?" + layer_query();
 	if (url_now !== frame_key) { frame_key = url_now; frame_etag = null; }//другой слой — нужен его кадр целиком
 	let next = 1000;
 	try {
 		const r = await fetch(url_now, { cache: "no-store", headers: frame_etag ? { "If-None-Match": frame_etag } : {} });
 		if (r.status !== 200 && r.status !== 304) throw new Error(r.status);
 		next = parseInt(r.headers.get("X-Next-Frame") || "1000");
-		const step = r.headers.get("X-Frame-Step"), time = parseInt(r.headers.get("X-Frame-Time") || "0"), period = parseInt(r.headers.get("X-Frame-Period") || "0");
-		$("frame_info").textContent = `step ${step} · ${new Date(time).toLocaleTimeString()} · every ${(period / 1000).toFixed(period % 1000 ? 1 : 0)} s`;
+		show_info(r.headers.get("X-Frame-Step"), parseInt(r.headers.get("X-Frame-Time") || "0"), parseInt(r.headers.get("X-Frame-Period") || "0"), "polling");
 		if (r.status === 200) {
-			const url = URL.createObjectURL(await r.blob());
-			if (seq !== frame_seq) { URL.revokeObjectURL(url); return; }
 			frame_etag = r.headers.get("ETag");
-			const old_w = img.naturalWidth, old = img.src;
-			await new Promise(ok => { img.onload = ok; img.onerror = ok; img.src = url; });
-			if (old.startsWith("blob:")) URL.revokeObjectURL(old);
-			if (!fitted) { fit(); fitted = true; }
-			else if (old_w && old_w !== img.naturalWidth) { view.k *= old_w / img.naturalWidth; }//другой размер клетки — та же видимая область
-			apply_view();
+			await show_png(await r.blob(), gen);
 		}
 	} catch (e) {
-		if (seq === frame_seq) frame_timer = setTimeout(load_frame, 3000);
-		return;
+		next = 3000;
 	}
 	//чуть позже начала отрезка и вразброс — зрители не приходят все в одну миллисекунду
-	if (seq === frame_seq) frame_timer = setTimeout(load_frame, next + 30 + Math.random() * 120);
+	if (gen === frame_gen) frame_timer = setTimeout(() => load_frame(gen), next + 30 + Math.random() * 120);
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) load_frame(); });
 
 stage.addEventListener("wheel", e => {
 	e.preventDefault();
@@ -228,10 +299,10 @@ stage.addEventListener("dblclick", fit);
 window.addEventListener("resize", apply_view);
 
 for (const id of ["mode", "bg", "scale"]) {
-	$(id).addEventListener("change", () => { store.set(id, $(id).value); load_frame(); });
+	$(id).addEventListener("change", () => { store.set(id, $(id).value); start_frames(); });
 }
-$("bots").addEventListener("change", () => { store.set("bots", $("bots").checked ? "1" : "0"); load_frame(); });
-$("scale").value = store.get("scale", "2");
+$("bots").addEventListener("change", () => { store.set("bots", $("bots").checked ? "1" : "0"); start_frames(); });
+$("scale").value = ["1", "3", "5"].includes(store.get("scale", "1")) ? store.get("scale", "1") : "1";//было 2 — теперь то же, что 1
 $("bots").checked = store.get("bots", "1") === "1";
 $("wrap").checked = store.get("wrap", "1") === "1";
 $("wrap").addEventListener("change", () => { store.set("wrap", $("wrap").checked ? "1" : "0"); apply_view(); });
@@ -488,7 +559,7 @@ $("brain_copy").addEventListener("click", async () => {
 });
 
 load_status().then(() => {
-	load_frame();
+	start_frames();
 	const m = location.hash.match(/brain=(\d+),(\d+)/);//ссылка на клетку: #brain=10,10 — сразу запросить ее мозг
 	if (m) { $("bx").value = m[1]; $("by").value = m[2]; picked = [+m[1], +m[2]]; $("b_brain").click(); }
 });
