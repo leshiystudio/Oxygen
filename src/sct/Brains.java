@@ -14,16 +14,21 @@ public class Brains {
 	}
 	//
 	public static final String NEURO = "neuro";//нейросеть: настройки — у популяции (sct.neuro.NeuroConfig)
+	public static final String FLY = "fly";//мозг мухи на видеокарте (sct.neuro.FlyBrain, настройки fly_* в Constant)
 	public static final String[] plant_brains = {"think_new", "think_old", NEURO};
 	public static String[] bot_brain_names() {
 		java.util.List<String> l = new java.util.ArrayList<String>(for_bot.keySet());
 		l.add(NEURO);
+		l.add(FLY);
 		return l.toArray(new String[0]);
 	}
 	//мозг-прототип популяции; существам — prototype.spawn()
 	public static Brain<Bot> make_bot_brain(Population p) {
 		if (p.brain.equals(NEURO)) {
 			return new sct.neuro.NeuroBrain<Bot>(p.neuro_config(), sct.neuro.BotBody.instance);
+		}
+		if (p.brain.equals(FLY)) {
+			return new sct.neuro.FlyBrain(p.count);
 		}
 		return bot_brain(p.brain);
 	}

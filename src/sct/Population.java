@@ -85,6 +85,9 @@ public class Population {
 			plants.actions_off(Constant.plant_actions_off);
 			list.add(plants);
 		}
+		if (Constant.starting_fly_count > 0) {//мухи — то же тело бота, мозг мухи на видеокарте
+			list.add(new Population("Flies", Species.OXYGEN_BOT, Brains.FLY, Constant.starting_fly_count, new Color(255, 200, 40)));
+		}
 		for (int i = 0; i < list.size(); i++) {
 			list.get(i).id = i;
 		}

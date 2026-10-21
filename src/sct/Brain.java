@@ -18,4 +18,12 @@ public interface Brain<B extends IBot> {
 	default Brain<B> spawn() {//мозг существа при создании мира (нейросеть — своя случайная сеть у каждого)
 		return this;
 	}
+	default boolean can_multiply(B parent) {//может ли существо сейчас дать потомка (муха — пока есть слот)
+		return true;
+	}
+	default void died(B body, int cause) {//существо погибло (cause — Ledger.DIE_*)
+	}
+	default boolean breathes() {//газообмен животного (муха): шаг — O2 в CO2, еда органикой — CO2 в O2
+		return false;
+	}
 }

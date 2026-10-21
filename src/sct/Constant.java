@@ -50,6 +50,17 @@ public class Constant {
 	//
 	public static String bot_actions_off = "";//выключенные действия бота через запятую (BotAction), например "attack,seed"
 	public static String bot_brain = "genome";//мозг ботов (Brains): genome — геном команд
+	//мозг мухи (популяция с мозгом fly, sct.neuro.FlyBrain); привязка датчиков и действий — flybrain/mapping.yaml
+	public static int starting_fly_count = 0;//мух при создании мира (своя популяция Flies); 0 — без мух
+	public static String fly_mode = "single";//single — мухи не размножаются; learn — размножаются в пределах fly_slots
+	public static double fly_recyclers = 0.5;//доля мух-едоков органики (остальные — фотосинтетики); тип — при появлении мухи
+	public static double fly_move_co2 = 1.0;//сколько CO2 муха выдыхает на шаг — доля от съеденного шагом кислорода
+	public static int fly_slots = 8;//сколько мух помещается на видеокарте в режиме learn (рекомендуемое сервис печатает при запуске)
+	//где сервис flybrain/server.py: auto — из переменной окружения OXYGEN_FLY_HOST, без нее 127.0.0.1.
+	//Не на этой машине (Docker: host.docker.internal) — мир сервис не запускает, его запускают на машине с видеокартой
+	public static String fly_host = "auto";
+	public static int fly_port = 5577;
+	public static String fly_python = "python";//чем запускать сервис, если он еще не запущен
 	//перезапуск мира, когда жизнь кончилась (WorldBio.auto_restart): off — нет, all — вымерли все популяции,
 	//any — вымерла любая популяция. Мир создается заново с теми же настройками (зерно — следующее)
 	public static String restart_mode = "off";

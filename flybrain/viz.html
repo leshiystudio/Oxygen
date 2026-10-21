@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мозг мухи</title>
+<style>
+  :root { --bg: #07090d; --panel: rgba(16, 20, 28, 0.88); --text: #d7dde8; --muted: #7d8899; --line: #263040; --accent: #ffd36b; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  #panel { position: fixed; top: 12px; left: 12px; width: 300px; max-height: calc(100% - 24px); overflow: auto;
+           background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; box-sizing: border-box; }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  .muted { color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .action { font-size: 18px; color: var(--accent); margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+  select, input[type=range] { flex: 1; }
+  select { background: #0d1118; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 4px; font-weight: 600; }
+  .g { display: grid; grid-template-columns: 12px 1fr 90px 34px; gap: 6px; align-items: center; padding: 2px 0; cursor: pointer; }
+  .g.off { opacity: .35; }
+  .sw { width: 10px; height: 10px; border-radius: 50%; }
+  .bar { height: 6px; background: #1a2130; border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; }
+  .hz { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #status { position: fixed; bottom: 10px; right: 14px; color: var(--muted); }
+  label { cursor: pointer; }
+  @media (max-width: 600px) { #panel { width: calc(100% - 24px); max-height: 45%; } }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="panel">
+  <h1>Мозг мухи</h1>
+  <div class="muted">FlyWire v783 · <span id="count">…</span> нейронов</div>
+  <div class="row"><span class="muted">Муха</span><select id="slot"></select></div>
+  <div class="action" id="action">ждём мир…</div>
+  <h2>Группы привязки</h2>
+  <div id="groups" class="muted">—</div>
+  <h2>Вид</h2>
+  <div class="row"><label><input type="checkbox" id="optic" checked> оптические доли</label></div>
+  <div class="row"><label><input type="checkbox" id="dimrest"> приглушить всё, кроме групп</label></div>
+  <div class="row"><span class="muted">Точки</span><input type="range" id="size" min="0.5" max="4" step="0.1" value="1.4"></div>
+  <div class="row"><span class="muted">След</span><input type="range" id="trail" min="0.5" max="0.97" step="0.01" value="0.85"></div>
+  <div class="muted" style="margin-top:8px">Мышь: вращать, колесо — масштаб, правая кнопка — сдвиг. Щелчок по группе — скрыть или показать.</div>
+</div>
+<div id="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// цвета классов нейронов (super_class) — приглушенный фон
+const CLASS_COLORS = {
+  optic: [0.25, 0.35, 0.6], central: [0.45, 0.45, 0.5], sensory: [0.3, 0.6, 0.35], visual_projection: [0.25, 0.55, 0.65],
+  ascending: [0.55, 0.4, 0.7], descending: [0.8, 0.5, 0.25], sensory_ascending: [0.35, 0.6, 0.5],
+  visual_centrifugal: [0.3, 0.45, 0.6], motor: [0.8, 0.3, 0.3], endocrine: [0.7, 0.6, 0.3], unknown: [0.4, 0.4, 0.4],
+};
+const GROUP_PALETTE = ['#ff6b6b', '#4dd0e1', '#ffd54f', '#81c784', '#ba68c8', '#ff8a65', '#64b5f6', '#f06292',
+  '#aed581', '#ffb74d', '#9575cd', '#4db6ac', '#e57373', '#90caf9'];
+
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50);
+camera.position.set(0, 0.15, 2.6);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+let N = 0, geom, mat, meta = null, version = null, act, shown, groupOf, hidden = new Set();
+let slot = 0;
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+const vertexShader = `
+  attribute vec3 color; attribute float act; attribute float base;
+  uniform float size; varying vec3 vColor; varying float vAlpha;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    float a = clamp(act, 0.0, 1.0);
+    gl_PointSize = size * (base + a * 2.0) * (4.0 / -mv.z);
+    vColor = mix(color, vec3(1.0, 0.8, 0.4), a * 0.7);
+    vAlpha = base > 0.0 ? 0.35 + a * 0.3 : 0.0;  // сложение яркостей: тысячи активных сливаются в белое
+    gl_Position = projectionMatrix * mv;
+  }`;
+const fragmentShader = `
+  varying vec3 vColor; varying float vAlpha;
+  void main() {
+    vec2 d = gl_PointCoord - 0.5; float r = dot(d, d);
+    if (r > 0.25) discard;
+    gl_FragColor = vec4(vColor, vAlpha * (1.0 - r * 3.0));
+  }`;
+
+async function load() {
+  const buf = await (await fetch('/neurons.bin')).arrayBuffer();
+  const pos = new Float32Array(buf);
+  N = pos.length / 3;
+  document.getElementById('count').textContent = N.toLocaleString('ru');
+  geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+  geom.setAttribute('base', new THREE.BufferAttribute(new Float32Array(N), 1));
+  act = new Float32Array(N);
+  geom.setAttribute('act', new THREE.BufferAttribute(act, 1));
+  mat = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: { size: { value: 1.4 } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  scene.add(new THREE.Points(geom, mat));
+  await loadMeta();
+}
+
+async function loadMeta() {
+  meta = await (await fetch('/meta')).json();
+  version = meta.version;
+  groupOf = new Int16Array(N).fill(-1);
+  Object.values(meta.groups).forEach((ids, g) => ids.forEach(i => { groupOf[i] = g; }));
+  buildGroupList();
+  paint();
+}
+
+function hex(c) { return [1, 3, 5].map(i => parseInt(c.substr(i, 2), 16) / 255); }
+
+function paint() {  // цвет и размер точек: класс нейрона, группа, фильтры
+  const col = geom.attributes.color.array, base = geom.attributes.base.array;
+  const optic = document.getElementById('optic').checked, dim = document.getElementById('dimrest').checked;
+  const names = Object.keys(meta.groups);
+  for (let i = 0; i < N; i++) {
+    const g = groupOf[i];
+    let c, b;
+    if (g >= 0 && !hidden.has(names[g])) {
+      c = hex(GROUP_PALETTE[g % GROUP_PALETTE.length]); b = 2.2;
+    } else {
+      const cls = meta.classes[meta.class_of[i]];
+      c = CLASS_COLORS[cls] || CLASS_COLORS.unknown;
+      b = (cls === 'optic' && !optic) ? 0 : (dim ? 0.35 : 0.8);
+      c = c.map(x => x * (dim ? 0.35 : 0.6));
+    }
+    col.set(c, i * 3); base[i] = b;
+  }
+  geom.attributes.color.needsUpdate = true;
+  geom.attributes.base.needsUpdate = true;
+}
+
+function buildGroupList() {
+  const box = document.getElementById('groups');
+  box.innerHTML = '';
+  box.classList.remove('muted');
+  Object.entries(meta.groups).forEach(([name, ids], g) => {
+    const color = GROUP_PALETTE[g % GROUP_PALETTE.length];
+    const row = document.createElement('div');
+    row.className = 'g' + (hidden.has(name) ? ' off' : '');
+    row.title = (meta.inputs.includes(name) ? 'вход' : 'выход') + ', нейронов: ' + ids.length;
+    row.innerHTML = `<span class="sw" style="background:${color}"></span><span>${meta.inputs.includes(name) ? '→ ' : '← '}${name}</span>` +
+      `<span class="bar"><i id="bar-${name}" style="background:${color}"></i></span><span class="hz" id="hz-${name}">0</span>`;
+    row.onclick = () => { hidden.has(name) ? hidden.delete(name) : hidden.add(name); row.classList.toggle('off'); paint(); };
+    box.appendChild(row);
+  });
+}
+
+async function pollInfo() {
+  try {
+    const info = await (await fetch('/info?slot=' + slot)).json();
+    if (!info.ready) { document.getElementById('action').textContent = 'ждём мир…'; return; }
+    if (info.version !== version) await loadMeta();
+    const sel = document.getElementById('slot');
+    const want = info.slots.map(String).join(',');
+    if (sel.dataset.slots !== want) {
+      sel.innerHTML = info.slots.map(s => `<option value="${s}">слот ${s}</option>`).join('') || '<option>нет живых мух</option>';
+      sel.dataset.slots = want;
+      if (info.slots.length && !info.slots.includes(slot)) { slot = info.slots[0]; }
+      sel.value = String(slot);
+    }
+    document.getElementById('action').textContent = info.slots.includes(slot) ? info.action : 'муха погибла';
+    for (const [g, hz] of Object.entries(info.rates)) {
+      const bar = document.getElementById('bar-' + g), t = document.getElementById('hz-' + g);
+      if (bar) bar.style.width = Math.min(100, hz / 2) + '%';
+      if (t) t.textContent = Math.round(hz);
+    }
+    document.getElementById('status').textContent = 'ход ' + info.tick;
+  } catch (e) {
+    document.getElementById('status').textContent = 'нет связи с сервисом мозга';
+  }
+}
+
+async function pollState() {
+  try {
+    const a = new Uint8Array(await (await fetch('/state?slot=' + slot)).arrayBuffer());
+    const k = parseFloat(document.getElementById('trail').value);
+    for (let i = 0; i < N; i++) {
+      const v = a[i] / 60;  // 120 Гц и выше — полная вспышка
+      act[i] = Math.max(act[i] * k, v);
+    }
+    geom.attributes.act.needsUpdate = true;
+  } catch (e) { /* сервис перезапускается */ }
+  setTimeout(pollState, 80);
+}
+
+document.getElementById('slot').onchange = e => { slot = parseInt(e.target.value, 10) || 0; act.fill(0); };
+document.getElementById('optic').onchange = paint;
+document.getElementById('dimrest').onchange = paint;
+document.getElementById('size').oninput = e => { mat.uniforms.size.value = parseFloat(e.target.value); };
+
+function frame() {
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+load().then(() => { pollState(); setInterval(pollInfo, 250); pollInfo(); frame(); });
+</script>
+</body>
+</html>

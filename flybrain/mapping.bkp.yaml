@@ -1,0 +1,143 @@
+# Привязка мозга мухи к телу бота Oxygen — единственное место, где она задается.
+#
+#   groups  — группы нейронов мозга мухи (по аннотациям FlyWire v783)
+#   sensors — датчик бота -> частота входа на группы
+#   actions — частота группы -> голос за действие бота
+#
+# Имена датчиков и действий — те же, что у нейро-бота (sct.neuro.BotBody, sct.BotAction).
+# Новое действие в BotAction или новый датчик в BotBody сразу доступны здесь по имени.
+# Сервис при запуске сверяет имена с тем, что прислал мир, и на опечатку отвечает списком допустимых.
+#
+# В каждом разделе сначала то, что подключено, ниже — закомментированный каталог того, что
+# еще не подключено: чтобы подключить, раскомментировать строку (и нужную ей группу).
+
+tick_ms: 10      # мозгового времени на один ход бота
+smooth_ms: 40    # частоты выходных групп сглаживаются за столько мс (за 10 мс один импульс — уже 100 Гц)
+
+groups:
+  # Селектор — поля аннотаций (cell_type, cell_class, cell_sub_class, super_class, side): значение
+  # или список, "PAM*" — все, что начинается с PAM; ids — явный список root_id. Условия — по «и».
+  # side — сторона тела клетки (у сенсорных — сторона входа нерва): left / right.
+  # Число в комментарии — сколько нейронов находит селектор.
+  #
+  # Входы
+  looming_left:  {cell_type: [LC4, LPLC2], side: left}     # 162 — детекторы надвигающегося объекта
+  looming_right: {cell_type: [LC4, LPLC2], side: right}    # 152
+  sugar:         {cell_class: gustatory, cell_sub_class: sugar}   # 32 — сладкие вкусовые рецепторы
+  co2:           {cell_type: ORN_V}                         # 67 — CO2-рецепторы (Gr21a/Gr63a), муха от CO2 уходит
+  # Выходы
+  walk:          {cell_type: DNp09}                         # 2 — ходьба вперед
+  walk_back:     {cell_type: MDN}                           # 4 — «лунная походка» назад
+  steer_left:    {cell_type: [DNa01, DNa02], side: left}    # 2 — поворот в свою сторону
+  steer_right:   {cell_type: [DNa01, DNa02], side: right}   # 2
+  escape:        {cell_type: DNp01}                         # 2 — Giant Fiber, прыжок-бегство
+  proboscis:     {cell_type: CB0701}                        # 2 — MN9, вытягивание хоботка (у Shiu сахар -> MN9)
+  #
+  # --- Еще не подключены ---
+  # Вкус
+  # bitter:      {cell_class: gustatory, cell_sub_class: bitter}                # 42 — горечь: тормозит хоботок даже при сахаре (проверено)
+  # water:       {cell_class: gustatory, cell_sub_class: water}                 # 30 — вода
+  # salt:        {cell_class: gustatory, cell_sub_class: high_salt/heavy_metal} # 29 — много соли, тяжелые металлы: отталкивает
+  # Запах (обонятельные рецепторы по клубочкам, ORN_* — 53 типа)
+  food_odor:       {cell_type: ORN_DM1}                   # 68 — Or42b, запах брожения (уксус): привлекает
+  # food_odor_left:  {cell_type: ORN_DM1, side: left}       # 35 — одна антенна: для поиска по градиенту
+  # food_odor_right: {cell_type: ORN_DM1, side: right}
+  bad_odor:    {cell_type: ORN_DA2}                       # 39 — Or56a, геосмин (плесень): отталкивает
+  # Температура и влажность
+  # heating:     {cell_class: thermosensory, cell_sub_class: heating}          # 7 — тепло: избегание, муха разворачивается (проверено)
+  # cold:        {cell_class: thermosensory, cell_sub_class: cold}             # 9 — холод
+  # dry:         {cell_class: hygrosensory, cell_sub_class: dry}               # 29 — сухость: избегание, как тепло (проверено)
+  # moist:       {cell_class: hygrosensory, cell_sub_class: moist}             # 16 — влажность
+  # Свет и механика
+  # light:       {cell_type: R1-6}                          # 7932 — фоторецепторы фасеточных глаз (яркость)
+  # light_left:  {cell_type: R1-6, side: left}              # 4044 — один глаз: для поворота к свету
+  # wind:        {cell_class: mechanosensory, cell_sub_class: wind_gravity}    # 481 — Джонстонов орган: ветер, гравитация
+  # touch:       {cell_class: mechanosensory, cell_sub_class: head bristle}    # 305 — щетинки головы: касание
+  # Обучение (грибовидное тело) — для режима learn
+  # reward:      {cell_type: "PAM*"}                        # 307 — дофаминовые PAM: «хорошо» (награда)
+  # punish:      {cell_type: "PPL1*"}                       # 16 — дофаминовые PPL1: «плохо» (наказание)
+  # kenyon:      {cell_class: Kenyon_Cell}                  # 5177 — клетки Кеньона: память запахов и ситуаций
+  # mbon:        {cell_class: MBON}                         # 96 — выходы грибовидного тела: «подойти / избегать»
+  # Выходы
+  # groom:       {cell_type: DNg11}                         # 6 — чистка передними ногами (отдых)
+  # wings:       {cell_type: [DNp02, DNp04, DNp11]}         # 6 — взмах и подъем крыльев (угроза, взлет)
+  # egg:         {cell_type: "oviDN*"}                      # 6 — откладка яиц (в FlyWire самка): аналог деления
+
+sensors:
+  # input — имя датчика; to — группа или список групп; rate — Гц при значении датчика 1
+  # (значение обрезается до 0..1, invert: true — берется 1 - значение;
+  #  offset — порог: вход идет только от превышения, (значение - offset) / (1 - offset))
+  - {input: "see left=4",     to: looming_left,  rate: 200}
+  - {input: "see right=4",    to: looming_right, rate: 200}
+  - {input: "see forward=4",  to: [looming_left, looming_right], rate: 200}
+  - {input: "see left=8",     to: looming_left,  rate: 200}
+  - {input: "see right=8",    to: looming_right, rate: 200}
+  - {input: "see forward=8",  to: [looming_left, looming_right], rate: 200}
+  - {input: "organics under", to: sugar, rate: 150}
+  - {input: co2,              to: co2,   rate: 150}   # фон CO2 в мире ~0.16 — без offset: 0.3 муха все время уходит от CO2
+  #
+  # --- Еще не подключены (все датчики BotBody, значения примерно 0..1) ---
+  # Состояние бота
+  # - {input: energy, ...}       # энергия / 1000 (выше 1000 срезается); голод — invert. «Голодного» нейрона нет,
+  #                              #   естественнее как сигнал обучения: прирост энергии -> reward
+  # - {input: age, ...}          # остаток жизни: 1 при рождении -> 0 смерть (кислород старит быстрее)
+  # Кислород: O2 в своей клетке / ox_render_maximum_coeff. Рецептора O2 у взрослой мухи в FlyWire нет
+  # - {input: oxygen, to: heating, rate: 200, invert: true}   # нехватка O2 -> уйти из душной зоны
+  # - {input: oxygen, to: bitter,  rate: 200, invert: true}   # нехватка O2 -> не есть в духоте
+  # - {input: oxygen, to: punish,  rate: 100, invert: true}   # нехватка O2 -> наказание при обучении
+  # Органика: органика / org_die_level; 1 — смертельный избыток
+  - {input: "organics forward", to: food_odor, rate: 150}   # органика впереди — «запах еды» спереди
+  # Зрение: "see forward=K", "see left=K", "see right=K" — 1, если в той клетке K:
+  #   0 семечко, 1 пусто, 2 свой (родственник), 3 избыток органики, 4 чужой, 5 королева,
+  #   6 подчиненная, 7 растение, 8 бот с другим мозгом (для мухи — обычный бот)
+  #   Подключены 4 и 8. Остальные, например:
+  - {input: "see forward=0", to: [looming_left, looming_right], rate: 100}  # семечко — частая причина гибели мух
+  - {input: "see forward=3", to: bad_odor,  rate: 150}      # смертельная органика впереди — гниль, отталкивает
+  - {input: "see forward=7", to: food_odor, rate: 150}      # растение впереди — пища
+  # - {input: "see forward=2", ...}                           # свой рядом (у мух — другая муха)
+  # Окружение
+  # - {input: neighbours, to: touch, rate: 100}   # соседей вокруг / 8 — теснота как касание
+  # - {input: chains, ...}       # связей в многоклеточной цепочке / 8
+  # - {input: queen, ...}        # 1 — бот королева
+  # - {input: subordinate, ...}  # 1 — бот подчиненный королевы
+  # - {input: "has order", ...}  # 1 — есть невыполненный приказ королевы
+  # - {input: x, ...}            # x / ширина мира
+  # - {input: y, to: light, rate: 100, invert: true}   # y / высота; свет сверху (у фотосинтеза сектор 0 ярче всех)
+
+actions:
+  # from — группа; голос = gain x сглаженная частота группы (Гц); голоса ниже threshold не считаются.
+  # Побеждает самый сильный голос среди включенных у популяции действий; никого — действие default.
+  # dir: forward, back, left, right (относительно взгляда бота) или 0..7 — абсолютное.
+  #      У turn направление — это угол поворота: left — налево, right — направо.
+  # params: два числа 0..1, как у нейро-бота (sct.neuro.BotBody.act); смысл — у каждого действия.
+  - {action: move,    dir: forward, from: walk,        gain: 1.0, threshold: 5}
+  - {action: move,    dir: back,    from: walk_back,   gain: 1.0, threshold: 5}
+  - {action: move,    dir: back,    from: escape,      gain: 3.0, threshold: 5}
+  - {action: turn,    dir: left,    from: steer_left,  gain: 1.0, threshold: 5}
+  - {action: turn,    dir: right,   from: steer_right, gain: 1.0, threshold: 5}
+  - {action: recycle, params: [1.0, 0.0], from: proboscis, gain: 1.0, threshold: 5}   # [количество, <0.5 — под собой]
+  #
+  # --- Еще не подключены (все действия BotAction) ---
+  # Движение
+  # - {action: set_dir, dir: 0, ...}      # повернуться в абсолютное направление dir (0..7)
+  # - {action: random_dir, from: groom, gain: 1.0, threshold: 5}  # случайный разворот — «почистился и пошел»
+  # Энергия
+  # - {action: photo, ...}                # фотосинтез (нужен CO2); сейчас — default, когда никто не голосует
+  # Борьба и обмен
+  # - {action: attack, dir: forward, from: wings, gain: 1.0, threshold: 5}  # атаковать клетку dir; у самки
+  #                                       #   драк нет, ближе всего — угроза крыльями
+  # - {action: give,  dir: forward, ...}  # отдать соседу 1/4 энергии
+  # - {action: share, dir: forward, ...}  # поделить энергию с соседом поровну
+  # Размножение (в fly_mode=single мир его не допустит; в learn — пока есть свободный слот)
+  # - {action: divide, dir: back, params: [0, 0], from: egg, gain: 1.0, threshold: 5}  # потомок в клетку dir;
+  #                                       #   params[1] — тип потомка (0..1 -> 0..7)
+  # - {action: seed, dir: back, params: [0.5, 0], from: egg, ...}  # семечко: [время полета, тип]
+  # Многоклеточность и королевы
+  # - {action: chain_divide, dir: forward, ...}  # потомок, связанный в цепочку; params[1] — тип
+  # - {action: chain_link, dir: forward, ...}    # связаться в цепочку с соседом dir
+  # - {action: queen_become, ...}                # стать королевой (нужно >= 5 связей)
+  # - {action: queen_call, ...}                  # подчиненная зовет соседей к своей королеве
+  # - {action: queen_order, params: [0.5, 0.5], dir: 1, ...}  # приказ: [команда, радиус];
+  #                                              #   dir % 3 - 1 — режим (0 — на, 1 — дальше, -1 — ближе)
+
+default: {action: photo}

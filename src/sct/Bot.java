@@ -655,6 +655,9 @@ public class Bot extends BotSuper {
 		int count = bot_count() + 1;
 		if (count_oxygen() >= Constant.move_ox_coeff * count && count_chains() == 0) {
 			oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
+			if (brain != null && brain.breathes()) {//муха выдыхает CO2 — по съеденному кислороду
+				co2_map[xpos][ypos] += Constant.move_ox_coeff * count * Constant.fly_move_co2;
+			}
 			int sens = move(rot);
 			if (sens == 1) {
 				energy -= Constant.energy_for_move;
@@ -900,6 +903,17 @@ public class Bot extends BotSuper {
 			return;
 		}
 		double gas = take / 8.0;//газообмен — как раньше, от объема до умножения
+		if (brain != null && brain.breathes()) {//муха: еда — обратный обмен, CO2 поглощается, O2 выделяется
+			if (count_co2() >= gas * Constant.org_recycle_co2_coeff) {
+				co2_map[xpos][ypos] = Math.max(0, co2_map[xpos][ypos] - gas * Constant.org_recycle_co2_coeff);
+				oxygen_map[xpos][ypos] += gas * Constant.org_recycle_ox_coeff;
+				energy += take;
+				life_energy += take;
+				org_map[px][py] -= take;
+				go_yellow();
+			}
+			return;
+		}
 		if (count_oxygen() >= gas * Constant.org_recycle_ox_coeff) {
 			oxygen_map[xpos][ypos] = Math.max(0, oxygen_map[xpos][ypos] - gas * Constant.org_recycle_ox_coeff);
 			co2_map[xpos][ypos] += gas * Constant.org_recycle_co2_coeff;
@@ -947,6 +961,9 @@ public class Bot extends BotSuper {
 	//
 	public void multiply(int rot, int seed, int time, int new_type, boolean ch, ListIterator<IBot> iterator) {
 		int max_mind = Constant.mind_size;
+		if (brain != null && !brain.can_multiply(this)) {//мозг не дает потомка (муха без свободного слота)
+			return;
+		}
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
 			if (occupant(pos) == null) {
@@ -1257,6 +1274,9 @@ public class Bot extends BotSuper {
 		}
 		killed = 1;
 		Ledger.die(cause);
+		if (brain != null) {
+			brain.died(this, cause);
+		}
 		if (queen == 1) {//корона переходит наследнице, иначе вся колония гибнет вместе с королевой
 			pass_crown();
 		}

@@ -87,13 +87,24 @@ public class NewWorldDialog extends JDialog {
 		private Population neuro_shown;//чьи параметры сейчас в neuro_table
 		//в диалоге это задают популяции (численность, мозг, действия) — в таблице параметров не показываются
 		static final java.util.Set<String> by_populations = java.util.Set.of(
-			"starting_bot_count", "starting_plant_count", "bot_brain", "bot_actions_off", "plant_actions_off");
+			"starting_bot_count", "starting_plant_count", "starting_fly_count", "bot_brain", "bot_actions_off", "plant_actions_off");
 		//перезапуск и перенос лучших — на первой вкладке, а не в таблице параметров ботов
 		static final java.util.Set<String> world_keys = java.util.Set.of("restart_mode", "elite", "elite_size", "elite_fields");
 		private final JComboBox<String> restart_box = new JComboBox<String>(new String[]{"off", "all", "any"});
 		private final javax.swing.JCheckBox elite_box = new javax.swing.JCheckBox("carry the best: clone them into the new world");
 		private final JTextField field_elite_size = new JTextField(4);
 		private final javax.swing.JCheckBox[] elite_fields = new javax.swing.JCheckBox[Elite.FIELDS.length];
+		//мухи (sct.neuro.FlyBrain) — своя вкладка, а не таблица параметров ботов
+		static final java.util.Set<String> fly_keys = java.util.Set.of(
+			"fly_mode", "fly_slots", "fly_recyclers", "fly_move_co2", "fly_host", "fly_port", "fly_python");
+		private final JComboBox<String> fly_mode_box = new JComboBox<String>(new String[]{"single", "learn"});
+		private final JLabel fly_mode_hint = new JLabel();
+		private final JTextField field_fly_slots = new JTextField(4);
+		private final JTextField field_fly_recyclers = new JTextField(4);
+		private final JTextField field_fly_move_co2 = new JTextField(4);
+		private final JTextField field_fly_host = new JTextField(14);
+		private final JTextField field_fly_port = new JTextField(5);
+		private final JTextField field_fly_python = new JTextField(14);
 
 		public NewWorldPanel(WorldBio world, Runnable close) {
 			this(initial(world), creator(world), close);
@@ -109,6 +120,7 @@ public class NewWorldDialog extends JDialog {
 			tabs.addTab("Oxygen bots", bots_tab());
 			tabs.addTab("Plants (biosim)", plants_tab());
 			tabs.addTab("Neuro", neuro_tab());
+			tabs.addTab("Flies", flies_tab());
 			add(tabs, BorderLayout.CENTER);
 			add(buttons(), BorderLayout.SOUTH);
 			load_into_ui();
@@ -188,6 +200,46 @@ public class NewWorldDialog extends JDialog {
 			p.add(left, BorderLayout.CENTER);
 			p.add(right, BorderLayout.EAST);
 			return p;
+		}
+		private JPanel flies_tab() {//мозг мухи на видеокарте: популяция с мозгом fly (sct.neuro.FlyBrain)
+			JPanel rows = new JPanel(new java.awt.GridLayout(0, 1, 0, 2));
+			rows.setBorder(BorderFactory.createTitledBorder("Fly brain (populations with brain \"fly\"; sensors and actions — flybrain/mapping.yaml)"));
+			JPanel mode = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			mode.add(new JLabel("mode"));
+			mode.add(fly_mode_box);
+			mode.add(fly_mode_hint);
+			fly_mode_box.addActionListener(e -> fly_mode_changed());
+			rows.add(mode);
+			JPanel slots = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			slots.add(new JLabel("GPU slots (max flies alive)"));
+			field_fly_slots.setToolTipText("learn mode only; the recommended number is printed by the fly service at start");
+			slots.add(field_fly_slots);
+			slots.add(new JLabel("— the recommended number is printed by the fly service at start; more flies — slower world"));
+			rows.add(slots);
+			JPanel diet = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			diet.add(new JLabel("share of organic eaters (0..1)"));
+			field_fly_recyclers.setToolTipText("a new fly gets its diet: organics (recycle) or photosynthesis (photo), never both");
+			diet.add(field_fly_recyclers);
+			diet.add(new JLabel("   CO2 exhaled per step (share of O2 used)"));
+			diet.add(field_fly_move_co2);
+			rows.add(diet);
+			JPanel conn = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			conn.add(new JLabel("service host (auto — this machine)"));
+			conn.add(field_fly_host);
+			conn.add(new JLabel("port"));
+			conn.add(field_fly_port);
+			conn.add(new JLabel("python"));
+			conn.add(field_fly_python);
+			rows.add(conn);
+			JPanel p = new JPanel(new BorderLayout(6, 6));
+			p.add(rows, BorderLayout.NORTH);
+			p.add(new JLabel("  Add flies on the first tab: a population with body OXYGEN_BOT and brain \"fly\"."), BorderLayout.CENTER);
+			return p;
+		}
+		private void fly_mode_changed() {
+			boolean learn = "learn".equals(fly_mode_box.getSelectedItem());
+			fly_mode_hint.setText(learn ? "flies multiply while a GPU slot is free" : "flies do not multiply; one GPU slot per fly of the population");
+			field_fly_slots.setEnabled(learn);
 		}
 		private JPanel plants_tab() {
 			JPanel p = new JPanel(new BorderLayout(6, 6));
@@ -314,9 +366,18 @@ public class NewWorldDialog extends JDialog {
 			for (int i = 0; i < elite_fields.length; i++) {
 				elite_fields[i].setSelected(ef.contains(Elite.FIELDS[i]));
 			}
+			fly_mode_box.setSelectedItem(s.constants.getOrDefault("fly_mode", Constant.fly_mode));
+			field_fly_slots.setText(s.constants.getOrDefault("fly_slots", String.valueOf(Constant.fly_slots)));
+			field_fly_recyclers.setText(s.constants.getOrDefault("fly_recyclers", String.valueOf(Constant.fly_recyclers)));
+			field_fly_move_co2.setText(s.constants.getOrDefault("fly_move_co2", String.valueOf(Constant.fly_move_co2)));
+			field_fly_host.setText(s.constants.getOrDefault("fly_host", Constant.fly_host));
+			field_fly_port.setText(s.constants.getOrDefault("fly_port", String.valueOf(Constant.fly_port)));
+			field_fly_python.setText(s.constants.getOrDefault("fly_python", Constant.fly_python));
+			fly_mode_changed();
 			List<String[]> rows = new ArrayList<String[]>();
 			for (Map.Entry<String, String> e : s.constants.entrySet()) {
-				if (!e.getKey().equals("world_scale") && !by_populations.contains(e.getKey()) && !world_keys.contains(e.getKey())) {//размер, перезапуск — на первой вкладке, остальное — у популяций
+				if (!e.getKey().equals("world_scale") && !by_populations.contains(e.getKey()) && !world_keys.contains(e.getKey())
+					&& !fly_keys.contains(e.getKey())) {//размер, перезапуск — на первой вкладке, мухи — на своей, остальное — у популяций
 					rows.add(new String[]{e.getKey(), e.getValue()});
 				}
 			}
@@ -426,6 +487,25 @@ public class NewWorldDialog extends JDialog {
 				throw new IllegalArgumentException("для переноса лучших отметьте хотя бы одно поле оценки");
 			}
 			s.constants.put("elite_fields", ef.toString());
+			s.constants.put("fly_mode", (String) fly_mode_box.getSelectedItem());
+			int slots = Integer.parseInt(field_fly_slots.getText().trim());
+			if (slots < 1) {
+				throw new IllegalArgumentException("слотов мух на видеокарте — не меньше 1");
+			}
+			s.constants.put("fly_slots", String.valueOf(slots));
+			double rec = Double.parseDouble(field_fly_recyclers.getText().trim());
+			if (rec < 0 || rec > 1) {
+				throw new IllegalArgumentException("доля мух-едоков органики — от 0 до 1");
+			}
+			s.constants.put("fly_recyclers", String.valueOf(rec));
+			double co2 = Double.parseDouble(field_fly_move_co2.getText().trim());
+			if (co2 < 0) {
+				throw new IllegalArgumentException("CO2 на шаг мухи — не меньше 0");
+			}
+			s.constants.put("fly_move_co2", String.valueOf(co2));
+			s.constants.put("fly_host", field_fly_host.getText().trim().isEmpty() ? "auto" : field_fly_host.getText().trim());
+			s.constants.put("fly_port", String.valueOf(Integer.parseInt(field_fly_port.getText().trim())));
+			s.constants.put("fly_python", field_fly_python.getText().trim());
 			s.seed = Long.parseLong(field_seed.getText().trim());
 			store_plant_params();
 			store_neuro_params();
