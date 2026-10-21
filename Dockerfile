@@ -10,8 +10,10 @@ RUN javac -encoding UTF-8 -d /app src/sct/*.java src/sct/plants/*.java src/sct/n
  && java -Djava.awt.headless=true -cp /app:/tests sct.SelfTest
 
 FROM eclipse-temurin:21-jre
-RUN useradd --system --uid 10001 --create-home oxygen \
- && mkdir -p "/data/saved worlds" && chown -R oxygen /data
+# ffmpeg — видео «последний час» (--record, docs/video-plan.md); без --record не запускается
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --create-home oxygen \
+ && mkdir -p "/data/saved worlds" /data/video && chown -R oxygen /data
 COPY --from=build /app /app
 WORKDIR /data
 USER oxygen

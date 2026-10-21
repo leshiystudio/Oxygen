@@ -35,6 +35,7 @@ public class SelfTest {
 		neuro();
 		leaves_use_co2();
 		restart_and_elite();
+		video_recorder();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -49,6 +50,62 @@ public class SelfTest {
 			failed++;
 			System.out.println("  FAIL  " + name);
 		}
+	}
+	//
+	//видео «последний час»: кодировщик подменен — ffmpeg не нужен
+	private static void video_recorder() throws Exception {
+		System.out.println("video recorder:");
+		WorldBio w = new WorldBio(false);
+		VideoRecorder r = new VideoRecorder(w, 0, 2);
+		java.io.ByteArrayOutputStream sink = new java.io.ByteArrayOutputStream();
+		java.util.List<String> starts = new java.util.ArrayList<String>();
+		r.encoder = new VideoRecorder.Encoder() {
+			public java.io.OutputStream start(int width, int height) {
+				starts.add(width + "x" + height);
+				return sink;
+			}
+			public void stop() {
+			}
+		};
+		int ww = Constant.world_scale[0], wh = Constant.world_scale[1];
+		int captured = 0;
+		for (int i = 0; i < 3; i++) {
+			w.step();
+			if (r.capture()) {
+				captured++;
+			}
+			r.write_next(0);
+		}
+		check("a frame per capture while the world runs (" + r.frames + ")", captured == 3 && r.frames == 3);
+		check("raw bgr0 frames of world size", sink.size() == 3 * ww * wh * 4 && starts.equals(java.util.List.of(ww + "x" + wh)));
+		int[] px = ((java.awt.image.DataBufferInt) new PixelRenderer().render(w, 0, 2, 1, true, false).getRaster().getDataBuffer()).getData();
+		byte[] b = sink.toByteArray();
+		boolean same = true;
+		for (int i = 0, o = 2 * ww * wh * 4; i < px.length; i++, o += 4) {//последний кадр: байты B G R 0
+			same &= b[o] == (byte) px[i] && b[o + 1] == (byte) (px[i] >> 8) && b[o + 2] == (byte) (px[i] >> 16) && b[o + 3] == 0;
+		}
+		check("pixels are the rendered world, bgr0", same);
+		check("no new frame on pause (same step)", !r.capture());
+		r.offer(new VideoRecorder.Frame(4, 2, new int[8]));
+		r.offer(new VideoRecorder.Frame(4, 2, new int[8]));
+		r.offer(new VideoRecorder.Frame(4, 2, new int[8]));
+		check("full queue drops the oldest frame, capture never waits", r.dropped == 1);
+		r.write_next(0);
+		check("new frame size restarts the encoder", starts.size() == 2 && starts.get(1).equals("4x2"));
+		check("views parsed", VideoRecorder.parse_views("0_2, 8_0").size() == 2 && VideoRecorder.parse_views("").isEmpty());
+		boolean bad = true;
+		for (String v : new String[]{"0-2", "99_0", "0_99", "0_2,0_2", "../0_2"}) {
+			try {
+				VideoRecorder.parse_views(v);
+				bad = false;
+			}catch (IllegalArgumentException e) {
+				//так и должно быть
+			}
+		}
+		check("wrong views are errors", bad);
+		check("only playlist and segments are served", VideoRecorder.valid_file("index.m3u8") && VideoRecorder.valid_file("seg_00012.ts")
+			&& !VideoRecorder.valid_file("..") && !VideoRecorder.valid_file("seg_1.ts") && !VideoRecorder.valid_file("seg_00001.ts/../x")
+			&& !VideoRecorder.valid_file("index.m3u8.tmp") && !VideoRecorder.valid_file(""));
 	}
 	//
 	//пустой мир с одной органикой, без ботов — для точечных сценариев
@@ -648,6 +705,51 @@ public class SelfTest {
 		kill_all_of(w, Species.OXYGEN_BOT);
 		w.step();
 		check("restart off: an empty world stays empty", w.restarts == 0 && w.objects.isEmpty());
+
+		Constant.restart_forced = 1;//принудительный: без вымирания, через restart_steps шагов попытки
+		Constant.restart_steps = 5;
+		Constant.elite = 1;
+		Constant.elite_size = 10;
+		Constant.elite_fields = "lifetime";
+		w = new WorldBio(false);
+		w.step();
+		Bot hero = null;
+		for (IBot o : w.objects) {//долгожитель с узнаваемым геномом — должен перейти в новый мир
+			if (o instanceof Bot b) {
+				hero = b;
+				break;
+			}
+		}
+		hero.life_steps = 1_000_000;
+		java.util.Arrays.fill(hero.genom_array[0], 44);
+		for (int i = 0; i < 3; i++) {
+			w.step();
+		}
+		check("forced restart: not before restart_steps (step " + w.steps + ")", w.restarts == 0 && w.steps == 4);
+		w.step();
+		boolean carried = false;
+		for (IBot o : w.objects) {
+			carried |= o instanceof Bot b && b.genom_array[0][0] == 44 && b.genom_array[0][63] == 44;
+		}
+		check("forced restart after restart_steps, the living best are carried", w.restarts == 1 && w.steps == 0 && carried);
+		for (int i = 0; i < 10; i++) {
+			w.step();
+		}
+		check("forced restart repeats every restart_steps of a try (restarts " + w.restarts + ")", w.restarts == 3 && w.steps == 0);
+		Constant.restart_forced = 0;
+		for (int i = 0; i < 10; i++) {
+			w.step();
+		}
+		check("forced restart off: the world goes on", w.restarts == 3 && w.steps == 10);
+		boolean zero_steps = false;
+		try {
+			Presets.set("restart_steps=0");
+		}catch (IllegalArgumentException e) {
+			zero_steps = true;
+		}
+		check("restart_steps must be at least 1", zero_steps && Constant.restart_steps == 5);
+		Constant.restart_steps = 100000;
+		Constant.elite = 0;
 
 		Constant.restart_mode = "all";
 		Constant.elite = 1;

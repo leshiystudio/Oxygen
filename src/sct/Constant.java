@@ -66,6 +66,10 @@ public class Constant {
 	//перезапуск мира, когда жизнь кончилась (WorldBio.auto_restart): off — нет, all — вымерли все популяции,
 	//any — вымерла любая популяция. Мир создается заново с теми же настройками (зерно — следующее)
 	public static String restart_mode = "off";
+	//принудительный перезапуск — и без вымирания: 1 — через restart_steps шагов попытки (счет с нуля после каждого
+	//перезапуска). Перенос лучших (elite...) — как при вымирании; работает и при restart_mode=off
+	public static int restart_forced = 0;
+	public static int restart_steps = 100000;
 	public static int elite = 0;//1 — при перезапуске новый мир заселяется точными клонами лучших (Elite)
 	public static int elite_size = 100;//сколько лучших хранить на популяцию
 	public static String elite_fields = "lifetime,children";//по каким счетчикам оценка (Elite.FIELDS через запятую)

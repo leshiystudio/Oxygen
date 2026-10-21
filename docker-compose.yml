@@ -18,6 +18,9 @@ services:
       - type: volume
         source: worlds
         target: /data/saved worlds                                          # сохранения, настройки, autosave.oxw
+      - type: volume
+        source: video
+        target: /data/video                                                 # видео «последний час» (--record): HLS-сегменты, десятки МБ на вид
     stop_grace_period: 60s                                                  # время на сохранение мира при остановке
     # mem_limit: 2g
     # cpus: 2
@@ -39,4 +42,5 @@ services:
 
 volumes:
   worlds:
+  video:
   cloudpub-config:

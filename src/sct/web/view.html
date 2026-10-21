@@ -54,8 +54,16 @@ table.pg th { color: var(--muted); font-weight: 400; }
 table.pg tr.on td { box-shadow: inset 0 0 0 1px #fff; }
 table.pg td.on { outline: 2px solid #fff; outline-offset: -2px; }
 .leg span { display: inline-flex; align-items: center; margin: 0 10px 4px 0; font-size: 12px; color: var(--muted); }
+#video { position: absolute; left: 8px; top: 8px; width: min(820px, calc(100% - 306px)); display: flex; flex-direction: column;
+	background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, .5); z-index: 6; }
+#video[hidden] { display: none; }
+#video .bar { display: flex; gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+#video .bar b { flex: 1; }
+#video video { width: 100%; max-height: calc(100vh - 140px); background: #000; image-rendering: pixelated; display: block; }
+#video .meta { padding: 4px 8px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
 	#brain { max-width: calc(100% - 16px); max-height: 70vh; }
+	#video { width: calc(100% - 16px); }
 	main { flex-direction: column; }
 	#stage { min-height: 55vh; }
 	aside { width: auto; border-left: 0; border-top: 1px solid var(--line); }
@@ -85,6 +93,12 @@ table.pg td.on { outline: 2px solid #fff; outline-offset: -2px; }
 		<div class="body" id="brain_body"></div>
 		<div class="hover" id="brain_hover">наведите на ячейку — расшифровка</div>
 	</div>
+	<div id="video" hidden>
+		<div class="bar"><b id="video_title">Last hour</b>
+			<button id="video_close" title="закрыть">✕</button></div>
+		<video id="video_el" controls muted playsinline></video>
+		<div class="meta" id="video_meta"></div>
+	</div>
 	<aside>
 		<h3>Picture</h3>
 		<label>bots <select id="mode"></select></label>
@@ -98,6 +112,12 @@ table.pg td.on { outline: 2px solid #fff; outline-offset: -2px; }
 		<label>cell <span><input class="xy" id="bx" type="number" placeholder="x"> <input class="xy" id="by" type="number" placeholder="y"></span></label>
 		<label><button id="b_brain" style="flex:1">Get brain</button></label>
 		<div id="brain_wait" style="color:var(--muted);font-size:12px;min-height:1.4em"></div>
+		<div id="rec_box" hidden>
+			<h3>Last hour (video)</h3>
+			<label>view <select id="rec_view" style="flex:1"></select></label>
+			<label><button id="b_video" style="flex:1">Play</button></label>
+			<div id="rec_info" style="color:var(--muted);font-size:12px"></div>
+		</div>
 		<h3>Populations</h3>
 		<table id="pops"></table>
 		<h3>World</h3>
@@ -346,7 +366,7 @@ async function load_status() {
 	const t = since(s);
 	$("s_started").textContent = t.when; $("s_run").textContent = t.run;
 	$("s_since").title = "серия начата " + t.full;
-	$("s_restarts").hidden = s.restart_mode === "off" && !s.restarts;
+	$("s_restarts").hidden = s.restart_mode === "off" && !s.restart_forced && !s.restarts;
 	$("s_rn").textContent = s.restarts;
 	$("s_try").textContent = since({ started: s.attempt_started, now: s.now }).run;
 	$("s_steps").textContent = s.steps;
@@ -370,7 +390,67 @@ async function load_status() {
 		["corpses", fmt(s.corpses)], ["kin clans", fmt(s.clans)], ["energy", fmt(s.energy)], ["balance diff", s.balance_diff == null ? "–" : s.balance_diff.toExponential(1)]];
 	$("world_info").innerHTML = "";
 	for (const [k, v] of info) { const tr = $("world_info").insertRow(); tr.insertCell().textContent = k; const c = tr.insertCell(); c.className = "n"; c.textContent = v; }
+	show_recording(s.recording || []);
 }
+
+// ---- видео «последний час»: сервер пишет HLS (VideoRecorder), здесь — список видов и плеер hls.js
+let rec = null, hls = null;
+function show_recording(views) {
+	$("rec_box").hidden = !views.length;
+	const sel = $("rec_view");
+	if (sel.options.length !== views.length) {
+		sel.innerHTML = "";
+		for (const v of views) sel.add(new Option(`${v.mode_name} / ${v.bg_name}`, v.view));
+		sel.value = store.get("rec_view", views.length ? views[0].view : "");
+		if (sel.selectedIndex < 0) sel.selectedIndex = 0;
+	}
+	const v = views.find(x => x.view === sel.value);
+	$("rec_info").textContent = !v ? "" : v.state === "running" ? `записано кадров: ${v.frames}` + (v.dropped ? `, пропущено ${v.dropped}` : "")
+		: v.state === "missing" ? "запись недоступна: на сервере нет ffmpeg" : `запись: ${v.state}`;
+}
+$("rec_view").addEventListener("change", () => store.set("rec_view", $("rec_view").value));
+function load_script(src) {
+	return new Promise((ok, fail) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = fail; document.head.append(s); });
+}
+async function play_video() {
+	const view = $("rec_view").value, el = $("video_el");
+	try {
+		const r = await fetch(location.origin + "/video", { cache: "no-store" });
+		rec = await r.json();
+	} catch (e) { $("rec_info").textContent = "нет связи"; return; }
+	const v = rec.views.find(x => x.view === view);
+	if (!v) return;
+	const sec_per_min = 60000 / rec.record_ms / rec.fps;
+	$("video_title").textContent = `Last ${rec.minutes} min — ${v.mode_name} / ${v.bg_name}`;
+	$("video_meta").textContent = `1 мин мира = ${sec_per_min.toFixed(sec_per_min < 10 ? 1 : 0)} с видео`;
+	$("video").hidden = false;
+	if (hls) { hls.destroy(); hls = null; }
+	const url = location.origin + v.url;
+	if (!window.Hls) {
+		try { await load_script("/hls.min.js"); } catch (e) {}
+	}
+	if (window.Hls && Hls.isSupported()) {
+		hls = new Hls({ startPosition: 0, liveDurationInfinity: true });//с начала окна, а не с «живого края»
+		hls.on(Hls.Events.FRAG_CHANGED, (ev, d) => {//реальное время показываемого куска (program_date_time)
+			if (d.frag.programDateTime) $("video_meta").textContent = `${new Date(d.frag.programDateTime).toLocaleString()} · 1 мин мира = ${sec_per_min.toFixed(sec_per_min < 10 ? 1 : 0)} с видео`;
+		});
+		hls.on(Hls.Events.ERROR, (ev, d) => { if (d.fatal) $("video_meta").textContent = "видео пока недоступно — запись только началась или прервалась"; });
+		hls.loadSource(url);
+		hls.attachMedia(el);
+	}else if (el.canPlayType("application/vnd.apple.mpegurl")) {//Safari — HLS сам
+		el.src = url;
+	}else {
+		$("video_meta").textContent = "браузер не умеет HLS";
+		return;
+	}
+	el.play().catch(() => {});
+}
+$("b_video").addEventListener("click", play_video);
+$("video_close").addEventListener("click", () => {
+	$("video").hidden = true;
+	if (hls) { hls.destroy(); hls = null; }
+	$("video_el").removeAttribute("src"); $("video_el").load();
+});
 
 // ---- график
 const palette = ["#5fb3ff", "#f07f5f", "#7fd17f", "#e0c050", "#c08fe0", "#50d0c8", "#e080b0", "#a0a0a0"];

@@ -83,9 +83,10 @@ java -cp out sct.Main --set max_age=1000 --set pht_coeff=90 --theme light
 ## Перезапуск и отбор лучших
 
 `--set restart_mode=all|any` — мир сам создаётся заново, когда вымерли все (любая) популяции;
+`--set restart_forced=1 --set restart_steps=100000` — и без вымирания, через столько шагов попытки;
 `--set elite=1` — заново он заселяется точными клонами лучших за серию (`elite_size`, по умолчанию 100;
 оценка по `elite_fields`: lifetime, children, energy, kills, generation). То же — на вкладке *World & species*.
-Подробно — [docs/docker-server.md](docs/docker-server.md#перезапуск-при-вымирании-и-перенос-лучших).
+Подробно — [docs/docker-server.md](docs/docker-server.md#перезапуск-при-вымирании-принудительный-перезапуск-и-перенос-лучших).
 
 ## Растения (модель biosim)
 
@@ -293,6 +294,7 @@ photosynthesis; spending is the cost of living and moving, the energy cap, organ
 ## Restart and the best
 
 `--set restart_mode=all|any` — the world recreates itself when all (any) populations die out;
+`--set restart_forced=1 --set restart_steps=100000` — also without extinction, after that many steps of a try;
 `--set elite=1` — it is repopulated with exact clones of the best of the series (`elite_size`,
 100 by default; scored by `elite_fields`: lifetime, children, energy, kills, generation). Same on
 the *World & species* tab. Details — [docs/docker-server.md](docs/docker-server.md).

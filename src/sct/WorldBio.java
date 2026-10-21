@@ -632,9 +632,12 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 			KinClans.update(this);
 		}
 		History.record(this, ms_per_step);
-		if (extinct(live, live_other)) {
+		if (extinct(live, live_other) || forced_restart_due()) {
 			auto_restart();
 		}
+	}
+	private boolean forced_restart_due() {//принудительный перезапуск: попытка прожила restart_steps шагов
+		return Constant.restart_forced != 0 && Constant.restart_steps > 0 && steps >= Constant.restart_steps;
 	}
 
 	//

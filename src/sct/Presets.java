@@ -108,6 +108,9 @@ public class Presets {
 		if (name.equals("restart_mode") && !java.util.Set.of("off", "all", "any").contains(value)) {
 			fail("restart_mode: off, all или any, получено " + value);
 		}
+		if (name.equals("restart_steps") && !value.trim().matches("[1-9]\\d{0,8}")) {
+			fail("restart_steps: целое число шагов не меньше 1, получено " + value);
+		}
 		if (name.equals("elite_fields")) {
 			try {
 				Elite.check_fields(value);

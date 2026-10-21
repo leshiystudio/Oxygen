@@ -112,6 +112,8 @@ footer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding:
 				</div>
 				<div class="row">
 					<label title="off — нет; all — когда вымерли все популяции; any — когда вымерла любая">restart when extinct <select id="f_restart"><option value="off">off</option><option value="all">all populations died out</option><option value="any">any population died out</option></select></label>
+					<label title="перезапуск и без вымирания: через столько шагов текущей попытки; лучшие переносятся, как ниже"><input type="checkbox" id="f_forced"> forced restart after</label>
+					<label><input type="number" id="f_restart_steps" min="1" style="width:100px"> steps</label>
 				</div>
 				<div class="row">
 					<label title="при перезапуске каждая популяция заполняется точными клонами лучших за серию"><input type="checkbox" id="f_elite"> carry the best: clone them into the new world</label>
@@ -350,6 +352,9 @@ $("f_seed").addEventListener("input", () => S.seed = $("f_seed").value);
 function render_run() {
 	const c = S.constants;
 	$("f_restart").value = c.restart_mode || "off";
+	$("f_forced").checked = (c.restart_forced || "0") !== "0";
+	$("f_restart_steps").value = c.restart_steps || "100000";
+	$("f_restart_steps").disabled = !$("f_forced").checked;
 	$("f_elite").checked = (c.elite || "0") !== "0";
 	$("f_elite_size").value = c.elite_size || "100";
 	const on = new Set((c.elite_fields || "").split(",").map(x => x.trim()).filter(Boolean));
@@ -363,6 +368,15 @@ function render_run() {
 	}
 }
 $("f_restart").addEventListener("change", () => S.constants.restart_mode = $("f_restart").value);
+$("f_forced").addEventListener("change", () => {
+	S.constants.restart_forced = $("f_forced").checked ? "1" : "0";
+	$("f_restart_steps").disabled = !$("f_forced").checked;
+});
+$("f_restart_steps").addEventListener("input", () => {
+	const v = parseInt($("f_restart_steps").value);
+	$("f_restart_steps").classList.toggle("bad", !(v >= 1));
+	if (v >= 1) S.constants.restart_steps = String(v);
+});
 $("f_elite").addEventListener("change", () => S.constants.elite = $("f_elite").checked ? "1" : "0");
 $("f_elite_size").addEventListener("input", () => {
 	const v = parseInt($("f_elite_size").value);
@@ -605,6 +619,7 @@ function validate() {//то, что диалог проверяет сам; ос
 	if (!(w >= 16 && h >= 16)) throw new Error("мир должен быть не меньше 16x16");
 	if (!/^-?\d+$/.test(String(S.seed).trim())) throw new Error("seed — целое число");
 	if (S.constants.elite === "1" && !S.constants.elite_fields) throw new Error("для переноса лучших отметьте хотя бы одно поле оценки");
+	if (S.constants.restart_forced === "1" && !(parseInt($("f_restart_steps").value) >= 1)) throw new Error("принудительный перезапуск — через целое число шагов, не меньше 1");
 	const bad = document.querySelectorAll("#p_new input.bad");
 	if (bad.length) throw new Error("неверных значений: " + bad.length + " (подсвечены красным)");
 }

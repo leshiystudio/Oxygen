@@ -28,7 +28,9 @@ import com.sun.net.httpserver.HttpServer;
 //  java -Djava.awt.headless=true -cp out sct.Server [--view-port 8080] [--control-port 8081] [--token T]
 //       [--resume] [--load файл.oxw] [--settings файл.properties] [--autosave минут] [--frame-ms 1000] [--brain-limit 10]
 //       [--trust-proxy] [--view-rps 10] [--view-burst 30] [--streams-per-ip 6] [--max-streams 500]
-//       [--stats-every 10] [--kin-every 500] [--preset ... --set ...]
+//       [--stats-every 10] [--kin-every 500]
+//       [--record 0_2,8_0] [--record-ms 1000] [--record-minutes 60] [--record-fps 30] [--record-crf 28] [--record-dir video] [--ffmpeg ffmpeg]
+//       [--preset ... --set ...]
 //Порт просмотра — только чтение: страница, кадр, статус, графики. Порт управления — то же плюс
 //пауза, скорость, новый мир по настройкам (.properties как у диалога «Новый мир»), сохранение и загрузка.
 //Токен управления — --token или переменная OXYGEN_CONTROL_TOKEN; без токена управление открыто всем, кто достучится до порта.
@@ -45,7 +47,7 @@ public class Server {
 	public static void main(String[] args) throws IOException {
 		int view_port = 8080, control_port = 8081, autosave_min = 0;
 		boolean resume = false;
-		String load = null, settings = null;
+		String load = null, settings = null, record = "";
 		token = System.getenv("OXYGEN_CONTROL_TOKEN");
 		trust_proxy = "1".equals(System.getenv("OXYGEN_TRUST_PROXY")) || "true".equalsIgnoreCase(System.getenv("OXYGEN_TRUST_PROXY"));
 		List<String> rest = new ArrayList<String>();
@@ -67,6 +69,13 @@ public class Server {
 				case "--settings": settings = args[++i]; break;
 				case "--stats-every": stats_every = Math.max(1, Integer.parseInt(args[++i])); break;
 				case "--kin-every": kin_every = Math.max(1, Integer.parseInt(args[++i])); break;
+				case "--record": record = args[++i]; break;
+				case "--record-ms": VideoRecorder.record_ms = Math.max(200, Integer.parseInt(args[++i])); break;
+				case "--record-minutes": VideoRecorder.minutes = Math.max(1, Integer.parseInt(args[++i])); break;
+				case "--record-fps": VideoRecorder.fps = Math.max(1, Integer.parseInt(args[++i])); break;
+				case "--record-crf": VideoRecorder.crf = Math.max(0, Math.min(51, Integer.parseInt(args[++i]))); break;
+				case "--record-dir": VideoRecorder.root = new File(args[++i]); break;
+				case "--ffmpeg": VideoRecorder.ffmpeg = args[++i]; break;
 				default: rest.add(args[i]);
 			}
 		}
@@ -78,6 +87,7 @@ public class Server {
 			token = null;
 		}
 		Presets.apply_args(rest.toArray(new String[0]));
+		List<int[]> record_views = VideoRecorder.parse_views(record);//опечатка в --record — ошибка до создания мира
 		WorldSettings.startup = WorldSettings.capture();
 		dir.mkdirs();
 		w = new WorldBio(false);
@@ -95,6 +105,16 @@ public class Server {
 			log("мир по настройкам " + settings);
 		}
 		w.start_simulation();
+		for (int[] v : record_views) {//видео «последний час» — docs/video-plan.md
+			VideoRecorder r = new VideoRecorder(w, v[0], v[1]);
+			VideoRecorder.all.add(r);
+			r.start();
+		}
+		if (!VideoRecorder.all.isEmpty()) {
+			Runtime.getRuntime().addShutdownHook(new Thread(() -> VideoRecorder.all.forEach(VideoRecorder::stop), "video-on-exit"));
+			log("видео: кадр раз в " + VideoRecorder.record_ms + " мс, окно " + VideoRecorder.minutes + " мин, "
+				+ VideoRecorder.fps + " кадров/с при просмотре");
+		}
 		//
 		HttpServer view = HttpServer.create(new InetSocketAddress(view_port), 0);
 		route(view, false);
@@ -184,6 +204,11 @@ public class Server {
 			}
 		});
 		on(srv, "/view", control, (ex, q) -> send_resource(ex, "view.html"));
+		on(srv, "/hls.min.js", control, (ex, q) -> {//плеер HLS (hls.js 1.5.20, Apache 2.0) — свой файл, без CDN
+			ex.getResponseHeaders().set("Cache-Control", "max-age=86400");
+			send_resource(ex, "hls.min.js", "text/javascript; charset=utf-8");
+		});
+		on(srv, "/video", control, Server::video);
 		on(srv, "/frame.png", control, Server::frame);
 		on(srv, "/stream", control, Server::stream);
 		on(srv, "/api/status", control, (ex, q) -> json(ex, status()));
@@ -611,6 +636,41 @@ public class Server {
 		}
 	}
 	//
+	//ВИДЕО «ПОСЛЕДНИЙ ЧАС» (VideoRecorder): /video — какие виды пишутся, /video/<вид>/index.m3u8 и сегменты —
+	//файлы, которые пишет ffmpeg. Отдаются только виды из --record и только имена плейлиста и сегментов.
+	//
+	private static String recording_json() {
+		StringBuilder sb = new StringBuilder("[");
+		for (VideoRecorder r : VideoRecorder.all) {
+			sb.append(sb.length() > 1 ? "," : "").append(r.json());
+		}
+		return sb.append("]").toString();
+	}
+	private static void video(HttpExchange ex, Map<String, String> q) throws IOException {
+		String path = ex.getRequestURI().getPath();
+		if (path.equals("/video") || path.equals("/video/")) {
+			json(ex, "{" + VideoRecorder.settings_json() + ",\"views\":" + recording_json() + "}");
+			return;
+		}
+		String[] parts = path.substring("/video/".length()).split("/", -1);
+		VideoRecorder r = parts.length == 2 ? VideoRecorder.find(parts[0]) : null;
+		if (r == null || !VideoRecorder.valid_file(parts[1])) {
+			send(ex, 404, "text/plain", "not found");
+			return;
+		}
+		File f = new File(r.dir, parts[1]);
+		byte[] body;
+		try {
+			body = Files.readAllBytes(f.toPath());
+		}catch (java.nio.file.NoSuchFileException e) {//сегмент уже удален ffmpeg или запись еще не началась
+			send(ex, 404, "text/plain", "not found");
+			return;
+		}
+		boolean playlist = parts[1].endsWith(".m3u8");
+		ex.getResponseHeaders().set("Cache-Control", playlist ? "no-cache" : "max-age=300");//имя сегмента повторится, только если каталог вида стерли
+		send(ex, 200, playlist ? "application/vnd.apple.mpegurl" : "video/mp2t", body);
+	}
+	//
 	//МОЗГ СУЩЕСТВА по координатам — единоразовый снимок (BrainInfo). Зрителю — не чаще раза в brain_limit_sec
 	//с одного адреса (пустая клетка не считается); порт управления не ограничен.
 	//
@@ -673,6 +733,8 @@ public class Server {
 				.append(",\"attempt_started\":").append(w.started)
 				.append(",\"restarts\":").append(w.restarts)
 				.append(",\"restart_mode\":").append(str(Constant.restart_mode))
+				.append(",\"restart_forced\":").append(Constant.restart_forced != 0)
+				.append(",\"restart_steps\":").append(Constant.restart_steps)
 				.append(",\"elite\":").append(Constant.elite != 0)
 				.append(",\"now\":").append(System.currentTimeMillis())
 				.append(",\"world\":").append(w.population)
@@ -691,6 +753,7 @@ public class Server {
 				.append(",\"view_rps\":").append(num(view_rps))
 				.append(",\"view_burst\":").append(view_burst)
 				.append(",\"streams\":").append(streams_open)
+				.append(",\"recording\":").append(recording_json())
 				.append(",\"bots\":").append(w.b_count)
 				.append(",\"seeds\":").append(w.org_count)
 				.append(",\"plants\":").append(last < 0 ? 0 : (int) History.data[History.PLANTS][last])
@@ -911,13 +974,16 @@ public class Server {
 			return new String(b, StandardCharsets.UTF_8);
 		}
 	}
-	private static void send_resource(HttpExchange ex, String name) throws IOException {//страницы — в sct/web на classpath
+	private static void send_resource(HttpExchange ex, String name) throws IOException {
+		send_resource(ex, name, "text/html; charset=utf-8");
+	}
+	private static void send_resource(HttpExchange ex, String name, String type) throws IOException {//страницы — в sct/web на classpath
 		try (InputStream in = Server.class.getResourceAsStream("web/" + name)) {
 			if (in == null) {
 				send(ex, 500, "text/plain; charset=utf-8", "нет ресурса sct/web/" + name + " — скопируйте src/sct/web в каталог классов");
 				return;
 			}
-			send(ex, 200, "text/html; charset=utf-8", in.readAllBytes());
+			send(ex, 200, type, in.readAllBytes());
 		}
 	}
 	private static void ok(HttpExchange ex) throws IOException {

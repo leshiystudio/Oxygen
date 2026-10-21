@@ -89,8 +89,10 @@ public class NewWorldDialog extends JDialog {
 		static final java.util.Set<String> by_populations = java.util.Set.of(
 			"starting_bot_count", "starting_plant_count", "starting_fly_count", "bot_brain", "bot_actions_off", "plant_actions_off");
 		//перезапуск и перенос лучших — на первой вкладке, а не в таблице параметров ботов
-		static final java.util.Set<String> world_keys = java.util.Set.of("restart_mode", "elite", "elite_size", "elite_fields");
+		static final java.util.Set<String> world_keys = java.util.Set.of("restart_mode", "restart_forced", "restart_steps", "elite", "elite_size", "elite_fields");
 		private final JComboBox<String> restart_box = new JComboBox<String>(new String[]{"off", "all", "any"});
+		private final javax.swing.JCheckBox forced_box = new javax.swing.JCheckBox("forced restart after");
+		private final JTextField field_restart_steps = new JTextField(7);
 		private final javax.swing.JCheckBox elite_box = new javax.swing.JCheckBox("carry the best: clone them into the new world");
 		private final JTextField field_elite_size = new JTextField(4);
 		private final javax.swing.JCheckBox[] elite_fields = new javax.swing.JCheckBox[Elite.FIELDS.length];
@@ -154,6 +156,11 @@ public class NewWorldDialog extends JDialog {
 			restart_box.setToolTipText("off — no; all — when every population died out; any — when any population died out");
 			run.add(restart_box);
 			run.add(new JLabel("   "));
+			forced_box.setToolTipText("restart even if nobody died out: after this many steps of the current try; the best are carried as below");
+			forced_box.addActionListener(e -> field_restart_steps.setEnabled(forced_box.isSelected()));
+			run.add(forced_box);
+			run.add(field_restart_steps);
+			run.add(new JLabel("steps   "));
 			elite_box.setToolTipText("on restart, the best of the series (by the scores below) are cloned exactly to fill each population");
 			run.add(elite_box);
 			run.add(new JLabel("keep"));
@@ -415,6 +422,9 @@ public class NewWorldDialog extends JDialog {
 			field_h.setText(scale[1].trim());
 			field_seed.setText(String.valueOf(s.seed));
 			restart_box.setSelectedItem(s.constants.getOrDefault("restart_mode", Constant.restart_mode));
+			forced_box.setSelected(!"0".equals(s.constants.getOrDefault("restart_forced", String.valueOf(Constant.restart_forced))));
+			field_restart_steps.setText(s.constants.getOrDefault("restart_steps", String.valueOf(Constant.restart_steps)));
+			field_restart_steps.setEnabled(forced_box.isSelected());
 			elite_box.setSelected(!"0".equals(s.constants.getOrDefault("elite", String.valueOf(Constant.elite))));
 			field_elite_size.setText(s.constants.getOrDefault("elite_size", String.valueOf(Constant.elite_size)));
 			java.util.Set<String> ef = new java.util.HashSet<String>(java.util.Arrays.asList(s.constants.getOrDefault("elite_fields", Constant.elite_fields).split(",")));
@@ -536,6 +546,17 @@ public class NewWorldDialog extends JDialog {
 			s.constants.put("world_scale", w + "," + h);
 			s.constants.putAll(constants_table.values());
 			s.constants.put("restart_mode", (String) restart_box.getSelectedItem());
+			s.constants.put("restart_forced", forced_box.isSelected() ? "1" : "0");
+			int every;
+			try {
+				every = Integer.parseInt(field_restart_steps.getText().trim());
+			}catch (NumberFormatException e) {
+				every = 0;
+			}
+			if (every < 1) {
+				throw new IllegalArgumentException("принудительный перезапуск — через целое число шагов, не меньше 1");
+			}
+			s.constants.put("restart_steps", String.valueOf(every));
 			s.constants.put("elite", elite_box.isSelected() ? "1" : "0");
 			int keep = Integer.parseInt(field_elite_size.getText().trim());
 			if (keep < 1) {
