@@ -19,11 +19,18 @@ public class PixelRenderer {
 	private static final int chain_color = Theme.rgb(255, 150, 0);
 	//
 	public BufferedImage render(WorldBio w) {
-		return render(w, w.draw_type, w.res_draw_type, Constant.size, w.render, true);
+		return render(w, w.draw_type, w.ground_layer, w.gas_layer, Constant.size, w.render, true);
+	}
+	//фон одним номером (веб-просмотр, Constant.res_type_names) -> слои «земля» и «газ»
+	private static final int[][] LEGACY_LAYERS = {{0, 0}, {0, 1}, {1, 1}, {2, 0}, {0, 2}, {3, 0}, {4, 0}};
+	public BufferedImage render(WorldBio w, int draw_type, int res_draw_type, int s, boolean bots, boolean overlays) {
+		int[] l = LEGACY_LAYERS[Math.max(0, Math.min(LEGACY_LAYERS.length - 1, res_draw_type))];
+		return render(w, draw_type, l[0], l[1], s, bots, overlays);
 	}
 	//кадр с заданными режимами и размером клетки s — веб-просмотр рисует свой кадр, не трогая режимы окна.
+	//ground — слой земли (Constant.ground_layer_names), gas — слой газа поверх (Constant.gas_layer_names).
 	//overlays — королевы и выделение: они рисуются в пикселях Constant.size, поэтому только при s == Constant.size
-	public BufferedImage render(WorldBio w, int draw_type, int res_draw_type, int s, boolean bots, boolean overlays) {
+	public BufferedImage render(WorldBio w, int draw_type, int ground, int gas, int s, boolean bots, boolean overlays) {
 		int ww = Constant.world_scale[0];
 		int wh = Constant.world_scale[1];
 		if (tile == null || tw != ww * s || th != wh * s) {//тайл создается один раз, а не на каждый кадр
@@ -32,7 +39,7 @@ public class PixelRenderer {
 			tile = new BufferedImage(tw, th, BufferedImage.TYPE_INT_RGB);
 			px = ((DataBufferInt) tile.getRaster().getDataBuffer()).getData();
 		}
-		draw_background(w, res_draw_type, ww, wh, s);
+		draw_background(w, ground, gas, ww, wh, s);
 		if (bots) {
 			draw_bots(w, draw_type, s);
 		}
@@ -75,33 +82,40 @@ public class PixelRenderer {
 		}
 	}
 	//
-	private void draw_background(WorldBio w, int mode, int ww, int wh, int s) {
-		if (mode == 0) {
+	//фон двумя слоями: земля (0 нет, 1 органика, 2 минералы, 3 высота, 4 тепло) и газ поверх (0 нет, 1 кислород, 2 CO2)
+	private void draw_background(WorldBio w, int ground, int gas, int ww, int wh, int s) {
+		if (ground == 0 && gas == 0) {
 			Arrays.fill(px, Theme.world_bg);
 			return;
 		}
 		double ox_max = Constant.ox_render_maximum_coeff;
 		double co2_max = Constant.co2_render_maximum_coeff;
 		double die = Constant.org_die_level;
+		double t_lo = Math.min(Constant.temp_low, Math.min(Constant.temp_mid, Constant.temp_high));
+		double t_span = Math.max(1e-9, Math.max(Constant.temp_low, Math.max(Constant.temp_mid, Constant.temp_high)) - t_lo);
+		double soil_scale = w.plants != null ? w.plants.c.max_energy_around : 1000.0;
+		double gas_alpha = ground == 0 ? 1.0 : 210 / 255.0;//поверх земли газ полупрозрачный — земля видна
 		for (int x = 0; x < ww; x++) {
 			for (int y = 0; y < wh; y++) {
-				int c;
+				int c = Theme.world_bg;
 				double org = w.org_map[x][y];
-				if (mode == 1) {//кислород
-					c = Theme.mix(Theme.world_bg, Theme.oxygen, w.oxygen_map[x][y] / ox_max);
-				}else if (mode == 2) {//органика с кислородом поверх
+				if (ground == 1) {//органика
 					c = Theme.mix(Theme.world_bg, Theme.organics, org / die);
-					c = Theme.mix(c, Theme.oxygen, w.oxygen_map[x][y] / ox_max * (210 / 255.0));
-				}else if (mode == 3) {//минералы (у растений — почва): корневая шкала до порога токсичности,
+				}else if (ground == 2) {//минералы (у растений — почва): корневая шкала до порога токсичности,
 					//иначе стартовые 100 из 1500 на темном фоне почти не видны
-					double scale = w.plants != null ? w.plants.c.max_energy_around : 1000.0;
-					c = Theme.mix(Theme.world_bg, Theme.minerals, Math.sqrt(Math.max(0, w.mnr_map[x][y]) / scale));
-				}else if (mode == 4) {//углекислый газ
-					c = Theme.mix(Theme.world_bg, Theme.co2, w.co2_map[x][y] / co2_max);
-				}else {//высоты
-					c = Theme.mix(Theme.world_bg, Theme.minerals, w.height_map[x][y] / 1000.0);
+					c = Theme.mix(Theme.world_bg, Theme.minerals, Math.sqrt(Math.max(0, w.mnr_map[x][y]) / soil_scale));
+				}else if (ground == 3) {//высоты: 0 — самая низкая клетка мира, 1 — самая высокая (Terrain)
+					c = Theme.mix(Theme.world_bg, 0xE8E0D0, Terrain.height(x, y));
+				}else if (ground == 4) {//тепло: синий — холодно, желтый — середина, красный — жарко (Terrain, temp_low/mid/high)
+					double t = (Terrain.temperature(x, y) - t_lo) / t_span;
+					c = t < 0.5 ? Theme.mix(0x3060D0, 0xE8D060, t * 2) : Theme.mix(0xE8D060, 0xD03020, (t - 0.5) * 2);
 				}
-				if (mode != 3 && mode != 5 && org >= die) {
+				if (gas == 1) {
+					c = Theme.mix(c, Theme.oxygen, w.oxygen_map[x][y] / ox_max * gas_alpha);
+				}else if (gas == 2) {
+					c = Theme.mix(c, Theme.co2, w.co2_map[x][y] / co2_max * gas_alpha);
+				}
+				if ((gas != 0 || ground == 1) && org >= die) {//мертвая зона: газы через нее не проходят
 					c = Theme.dead_zone;
 				}
 				fill_cell(x, y, s, c);

@@ -17,14 +17,15 @@ public class History {
 		"plants", "plant corpses", "minerals (soil)",
 		"pop 1", "pop 2", "pop 3", "pop 4", "pop 5", "pop 6", "pop 7", "pop 8",//подписи — имена популяций мира (name_populations)
 		"no role (gray)", "photosynth (green)", "predators (red)", "recyclers (yellow)", "mixed",
-		"sprouts", "leaves", "roots", "trunks (trans)"
+		"sprouts", "leaves", "roots", "trunks (trans)",
+		"genome switches"
 	};
 	//цвета линий, совпадающие с цветами на карте (null — цвет из палитры графика)
 	public static final java.awt.Color[] colors = new java.awt.Color[names.length];
 	public static final int BOTS = 0, SEEDS = 1, QUEENS = 2, SUBS = 3, ENERGY_CELLS = 4, ORGANICS = 5, ENERGY_TOTAL = 6,
 		BIRTHS = 7, DEATHS = 8, MUTATIONS = 9, DEATH_CAUSE0 = 10, UNIQUE = 18, CLANS = 19, OXYGEN = 20, CO2 = 21,
 		MS = 22, BALANCE = 23, DEATH_PLANT0 = 24, PLANTS = 28, CORPSES = 29, SOIL = 30, POP0 = 31, POPS = 8,
-		ROLE0 = 39, SPROUTS = 44, LEAVES = 45, ROOTS = 46, TRUNKS = 47;
+		ROLE0 = 39, SPROUTS = 44, LEAVES = 45, ROOTS = 46, TRUNKS = 47, GENOME_SWITCHES = 48;
 	static {
 		colors[SEEDS] = new java.awt.Color(150, 90, 30);
 		colors[ROLE0 + Bot.ROLE_NONE] = new java.awt.Color(150, 150, 150);
@@ -149,6 +150,7 @@ public class History {
 		data[BIRTHS][i] = Ledger.births;
 		data[DEATHS][i] = Ledger.deaths_total();
 		data[MUTATIONS][i] = Ledger.mutations;
+		data[GENOME_SWITCHES][i] = Ledger.genome_switches;
 		for (int c = 0; c < Ledger.die_names.length; c++) {
 			data[death_index(c)][i] = Ledger.deaths[c];
 		}

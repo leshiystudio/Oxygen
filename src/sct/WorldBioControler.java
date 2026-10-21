@@ -135,10 +135,13 @@ public class WorldBioControler extends JPanel{
         //
         //смена режимов отрисовки фона
         //
-        header("Background");
-        place_pair(res_draw_type_button("None", 0), res_draw_type_button("Oxygen", 1));
-        place_pair(res_draw_type_button("Org + O2", 2), res_draw_type_button("Minerals / soil", 3));
-        place_pair(res_draw_type_button("Co2", 4), new JLabel());
+        header("Background: ground");
+        place_pair(ground_button("None", 0), ground_button("Organics", 1));
+        place_pair(ground_button("Minerals / soil", 2), ground_button("Height", 3));
+        place_pair(ground_button("Heat", 4), new JLabel());
+        header("Gases (over ground)");
+        place_pair(gas_button("None", 0), gas_button("Oxygen", 1));
+        place_pair(gas_button("Co2", 2), new JLabel());
 
         //
         //инструмент правой кнопки мыши
@@ -241,9 +244,14 @@ public class WorldBioControler extends JPanel{
 		b.addActionListener(e -> world.draw_type = draw_type);
 		return b;
 	}
-	private JButton res_draw_type_button(String text, int res_draw_type) {
+	private JButton ground_button(String text, int layer) {//фон: слой земли
 		JButton b = new JButton(text);
-		b.addActionListener(e -> world.res_draw_type = res_draw_type);
+		b.addActionListener(e -> world.ground_layer = layer);
+		return b;
+	}
+	private JButton gas_button(String text, int layer) {//фон: слой газа поверх земли
+		JButton b = new JButton(text);
+		b.addActionListener(e -> world.gas_layer = layer);
 		return b;
 	}
 	//
@@ -314,7 +322,10 @@ public class WorldBioControler extends JPanel{
 		label_balance.setText(String.format("balance diff: %.2g", Ledger.total_diff));
 		label_clans.setText("kin clans: " + KinClans.clans + ", genomes: " + KinClans.unique_genomes);
 		label_draw_type.setText("bots: " + Constant.draw_type_names[world.draw_type]);
-		label_res_draw_type.setText("background: " + Constant.res_type_names[world.res_draw_type]);
+		String range = world.ground_layer == 3 ? String.format(" %.0f..%.0f m", Constant.terrain_height_min, Constant.terrain_height_max)
+			: world.ground_layer == 4 ? String.format(" %.0f..%.0f °C", Constant.temp_low, Constant.temp_high) : "";
+		label_res_draw_type.setText("background: " + Constant.ground_layer_names[world.ground_layer] + range
+			+ (world.gas_layer > 0 ? " + " + Constant.gas_layer_names[world.gas_layer] : ""));
 		if (tool_box.getSelectedIndex() != world.tool_idx) {
 			tool_box.setSelectedIndex(world.tool_idx);
 		}

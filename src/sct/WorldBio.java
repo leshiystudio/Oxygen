@@ -72,7 +72,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	volatile IBot selection = null;//выбранное существо (бот, растение, нейро...)
 	volatile IBot prev_selection = null;//предыдущее выбранное — для сравнения геномов
 	int draw_type = 0;//режим отрисовки
-	int res_draw_type = 0;//режим отрисовки фона/ресурсов/окружения
+	int ground_layer = 0;//фон окна: слой земли (Constant.ground_layer_names)
+	int gas_layer = 0;//и слой газа поверх него (Constant.gas_layer_names) — включаются независимо
 	//
 	//поток симуляции
 	//Все изменения мира и его чтение для отрисовки — только под lock.
@@ -516,7 +517,9 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		selection = null;
 		prev_selection = null;
 		objects = new ArrayList<IBot>();
-		SimplexNoise noise = new SimplexNoise(rand.nextInt(-1000000000, 1000000000));//шум
+		int noise_seed = rand.nextInt(-1000000000, 1000000000);//одно число из rand мира при любом рельефе
+		SimplexNoise noise = new SimplexNoise(noise_seed);//шум
+		boolean peaks = Constant.terrain_relief.equals("peaks");
 		Map = new IBot[Constant.world_scale[0]][Constant.world_scale[1]];
 		oxygen_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
 		co2_map = new double[Constant.world_scale[0]][Constant.world_scale[1]];
@@ -531,9 +534,33 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 				org_map[x][y] = Constant.starting_org;
 				mnr_map[x][y] = 0;
 				Map[x][y] = null;
-				height_map[x][y] = (int)(noise.sumOctaves(8, x, y, 0.5F, 0.007F, 0, 1000));
+				if (!peaks) {
+					height_map[x][y] = seamless_height(noise, x, y);
+				}
 			}
 		}
+		if (peaks) {//горы как в IndustrialGate (Relief)
+			height_map = Relief.generate(Constant.world_scale[0], Constant.world_scale[1], noise_seed);
+		}
+	}
+	//высота 0..1000 без шва по краям замкнутого мира: смесь четырех копий шума, сдвинутых на ширину
+	//и высоту мира, с весами по положению клетки (у края x=0 и x=W — одни и те же копии).
+	//Смесь независимых шумов дает меньший разброс — он восстанавливается делением на sqrt(сумма весов^2)
+	private static int seamless_height(SimplexNoise noise, int x, int y) {
+		int w = Constant.world_scale[0], h = Constant.world_scale[1];
+		double u = (double) x / w, v = (double) y / h;
+		double[] wt = {(1 - u) * (1 - v), u * (1 - v), (1 - u) * v, u * v};
+		double[] n = {
+			sample(noise, x, y), sample(noise, x - w, y), sample(noise, x, y - h), sample(noise, x - w, y - h)};
+		double s = 0, s2 = 0;
+		for (int i = 0; i < 4; i++) {
+			s += wt[i] * n[i];
+			s2 += wt[i] * wt[i];
+		}
+		return (int) Math.max(0, Math.min(1000, 500 + s / Math.sqrt(s2)));
+	}
+	private static double sample(SimplexNoise noise, int x, int y) {//шум около 0: -500..500
+		return noise.sumOctaves(8, x, y, 0.5F, 0.007F, 0, 1000) - 500;
 	}
 
 	//
@@ -541,6 +568,7 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 	//
 	public void step() {
 		Ledger.begin_step();
+		Terrain.update(this);//высоты, температура, эффективность фотосинтеза (пересчет — при новой карте или параметрах)
 		steps++;
 		b_count = 0;
 		obj_count = 0;
@@ -576,8 +604,8 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		if (plants != null) {//органика -> энергия почвы, вымывание почвы (конец тика biosim)
 			sct.plants.Plant.mineralize(plants);
 		}
-		WorldUtils.gas(oxygen_map, org_map);
-		WorldUtils.gas(co2_map, org_map);
+		WorldUtils.gas(oxygen_map, org_map, -1);//режим высот: кислород легче — растекается больше вверх,
+		WorldUtils.gas(co2_map, org_map, 1);//CO2 тяжелее — вниз; без режима — поровну, как раньше
 		boolean influx = Constant.mineral_influx > 0 || (Constant.mineral_influx < 0 && plants == null);
 		if (influx) {
 			if (plants != null) {//минералы — энергия растений: приток (и срез до 1000) — статья журнала

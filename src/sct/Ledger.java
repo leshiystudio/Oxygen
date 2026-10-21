@@ -49,6 +49,7 @@ public class Ledger {
 	public static double in_exchange;//еда между популяциями: exchange != 1 и округление до целой энергии растений
 	public static int births;
 	public static int mutations;
+	public static int genome_switches;//переходов бота на другой геном (команда генома 47) за шаг
 	public static int[] deaths = new int[die_names.length];
 	//
 	//итоги
@@ -76,6 +77,7 @@ public class Ledger {
 		in_exchange = 0;
 		births = 0;
 		mutations = 0;
+		genome_switches = 0;
 		java.util.Arrays.fill(deaths, 0);
 	}
 	//

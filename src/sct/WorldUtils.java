@@ -56,9 +56,18 @@ public class WorldUtils {
 	}
 	//
 	public static void gas(double[][] gas_map, double[][] org_map) {//распространение кислорода
+		gas(gas_map, org_map, 0);
+	}
+	//slope: 0 — поровну всем соседям; 1 — тяжелый газ (CO2): нижним соседям доля больше, верхним меньше;
+	//-1 — легкий (кислород): наоборот. Перекос — только в режиме высот (Terrain), газ сохраняется:
+	//доли клетки нормированы суммой весов. Вес соседа: 1 + k * (своя высота - его, м) / 10 * slope, не меньше 0;
+	//k = 2 * gas_drift — так за тик на склоне 10 м на клетку сдвигается около gas_drift газа клетки; круче — больше
+	public static void gas(double[][] gas_map, double[][] org_map, int slope) {
 		int w = Constant.world_scale[0];
 		int h = Constant.world_scale[1];
 		ensure_buffers(w, h);
+		double[][] hm = slope != 0 && Constant.gas_drift > 0 ? Terrain.heights() : null;
+		double k = 2 * Constant.gas_drift * slope / 10;
 		double min = Constant.ox_distribution_min;
 		double evap = Constant.evaporation_ox_coeff;
 		double die = Constant.org_die_level;
@@ -76,7 +85,20 @@ public class WorldUtils {
 			double[] g = gas_map[x];
 			double[] sh = share[x];
 			for (int y = 0; y < h; y++) {
-				if (g[y] >= min) {
+				if (g[y] >= min && hm != null) {//режим высот: доля на единицу веса, вес соседа — по склону
+					int ym = wrap_y_minus[y], yp = wrap_y_plus[y];
+					double hs = hm[x][y];
+					double sum = 1;
+					if (pass[x][ym]) sum += weight(k, hs, hm[x][ym]);
+					if (pass[xp][ym]) sum += weight(k, hs, hm[xp][ym]);
+					if (pass[xp][y]) sum += weight(k, hs, hm[xp][y]);
+					if (pass[xp][yp]) sum += weight(k, hs, hm[xp][yp]);
+					if (pass[x][yp]) sum += weight(k, hs, hm[x][yp]);
+					if (pass[xm][yp]) sum += weight(k, hs, hm[xm][yp]);
+					if (pass[xm][y]) sum += weight(k, hs, hm[xm][y]);
+					if (pass[xm][ym]) sum += weight(k, hs, hm[xm][ym]);
+					sh[y] = g[y] * evap / sum;
+				}else if (g[y] >= min) {
 					int ym = wrap_y_minus[y], yp = wrap_y_plus[y];
 					int count = 1;
 					if (pass[x][ym]) count++;
@@ -100,7 +122,14 @@ public class WorldUtils {
 			double[] n = next[x];
 			for (int y = 0; y < h; y++) {
 				double v = share[x][y] >= 0 ? share[x][y] : g[y];
-				if (pass[x][y]) {
+				if (pass[x][y] && hm != null) {//доля соседа на единицу веса x вес этой клетки для него
+					int ym = wrap_y_minus[y], yp = wrap_y_plus[y];
+					double hs = hm[x][y];
+					v += pos(share[x][ym]) * weight(k, hm[x][ym], hs) + pos(share[xp][ym]) * weight(k, hm[xp][ym], hs)
+						+ pos(share[xp][y]) * weight(k, hm[xp][y], hs) + pos(share[xp][yp]) * weight(k, hm[xp][yp], hs)
+						+ pos(share[x][yp]) * weight(k, hm[x][yp], hs) + pos(share[xm][yp]) * weight(k, hm[xm][yp], hs)
+						+ pos(share[xm][y]) * weight(k, hm[xm][y], hs) + pos(share[xm][ym]) * weight(k, hm[xm][ym], hs);
+				}else if (pass[x][y]) {
 					int ym = wrap_y_minus[y], yp = wrap_y_plus[y];
 					v += pos(share[x][ym]) + pos(share[xp][ym]) + pos(share[xp][y]) + pos(share[xp][yp])
 						+ pos(share[x][yp]) + pos(share[xm][yp]) + pos(share[xm][y]) + pos(share[xm][ym]);
@@ -111,6 +140,10 @@ public class WorldUtils {
 		for (int x = 0; x < w; x++) {
 			System.arraycopy(next[x], 0, gas_map[x], 0, h);
 		}
+	}
+	private static double weight(double k, double from, double to) {//вес соседа «to» в раздаче клетки «from»
+		double wt = 1 + k * (from - to);
+		return wt > 0 ? wt : 0;
 	}
 	private static double pos(double v) {
 		return v > 0 ? v : 0;

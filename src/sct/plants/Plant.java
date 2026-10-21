@@ -611,6 +611,9 @@ public class Plant extends BotSuper {
 					hp += c.leaf_health_per_trans;
 				}
 			}
+			if (sun > 0 && sct.Terrain.on()) {//режим высот: солнце листа по температуре клетки
+				sun = (int) Math.round(sun * sct.Terrain.pht_eff(xpos, ypos));
+			}
 			if (sun > 0) {
 				Ledger.in_plant_sun += sun;
 				add_energy(sun);

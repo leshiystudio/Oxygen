@@ -105,6 +105,17 @@ public class NewWorldDialog extends JDialog {
 		private final JTextField field_fly_host = new JTextField(14);
 		private final JTextField field_fly_port = new JTextField(5);
 		private final JTextField field_fly_python = new JTextField(14);
+		//режим высот (Terrain) — на первой вкладке, а не в таблице параметров ботов
+		static final String[] terrain_fields = {"temp_low", "temp_mid", "temp_high", "pht_t_min", "pht_t_opt", "pht_t_max", "gas_drift"};
+		static final java.util.Set<String> terrain_keys = java.util.Set.of(
+			"terrain", "temp_low", "temp_mid", "temp_high", "pht_t_min", "pht_t_opt", "pht_t_max", "gas_drift",
+			"terrain_relief", "terrain_height_min", "terrain_height_max", "terrain_mountains", "terrain_sharpness", "terrain_size");
+		//рельеф (Relief) — при создании мира, и при выключенном режиме высот: горы видны на фоне Height
+		static final String[] relief_fields = {"terrain_height_min", "terrain_height_max", "terrain_mountains", "terrain_sharpness", "terrain_size"};
+		private final JComboBox<String> relief_box = new JComboBox<String>(new String[]{"peaks", "noise"});
+		private final JTextField[] relief_values = new JTextField[relief_fields.length];
+		private final javax.swing.JCheckBox terrain_box = new javax.swing.JCheckBox("heights: mountains, temperature, gas drift");
+		private final JTextField[] terrain_values = new JTextField[terrain_fields.length];
 
 		public NewWorldPanel(WorldBio world, Runnable close) {
 			this(initial(world), creator(world), close);
@@ -153,9 +164,35 @@ public class NewWorldDialog extends JDialog {
 				run.add(elite_fields[i]);
 			}
 			run.add(new JLabel("(each divided by its mean, summed)"));
-			JPanel north = new JPanel(new java.awt.GridLayout(2, 1));
+			//режим высот (Constant.terrain..., Terrain): галочка и числа
+			JPanel heights = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			terrain_box.setToolTipText(ParamDocs.constant.get("terrain"));
+			terrain_box.addActionListener(e -> terrain_changed());
+			heights.add(terrain_box);
+			String[] labels = {"   temperature °C: low", "mid", "high", "   photosynthesis °C: min", "opt", "max", "   gas drift"};
+			for (int i = 0; i < terrain_fields.length; i++) {
+				terrain_values[i] = new JTextField(4);
+				terrain_values[i].setToolTipText(ParamDocs.constant.get(terrain_fields[i]));
+				heights.add(new JLabel(labels[i]));
+				heights.add(terrain_values[i]);
+			}
+			JPanel relief = new JPanel(new FlowLayout(FlowLayout.LEFT));
+			relief.add(new JLabel("relief"));
+			relief_box.setToolTipText(ParamDocs.constant.get("terrain_relief"));
+			relief_box.addActionListener(e -> relief_changed());
+			relief.add(relief_box);
+			String[] relief_labels = {"   height m: min", "max", "   mountains share", "crest sharpness", "mountain waves across"};
+			for (int i = 0; i < relief_fields.length; i++) {
+				relief_values[i] = new JTextField(i < 2 ? 5 : 4);
+				relief_values[i].setToolTipText(ParamDocs.constant.get(relief_fields[i]));
+				relief.add(new JLabel(relief_labels[i]));
+				relief.add(relief_values[i]);
+			}
+			JPanel north = new JPanel(new java.awt.GridLayout(4, 1));
 			north.add(top);
 			north.add(run);
+			north.add(heights);
+			north.add(relief);
 			p.add(north, BorderLayout.NORTH);
 			//популяции
 			JPanel pops = new JPanel(new BorderLayout(4, 4));
@@ -235,6 +272,24 @@ public class NewWorldDialog extends JDialog {
 			p.add(rows, BorderLayout.NORTH);
 			p.add(new JLabel("  Add flies on the first tab: a population with body OXYGEN_BOT and brain \"fly\"."), BorderLayout.CENTER);
 			return p;
+		}
+		private static String constant_value(String name) {//текущее значение поля Constant по имени
+			try {
+				return WorldSettings.field_value(Constant.class.getField(name), null);
+			}catch (NoSuchFieldException e) {
+				return "";
+			}
+		}
+		private void relief_changed() {//доля, острота и размер гор — только у peaks; метры — у любого рельефа
+			boolean peaks = "peaks".equals(relief_box.getSelectedItem());
+			for (int i = 2; i < relief_values.length; i++) {
+				relief_values[i].setEnabled(peaks);
+			}
+		}
+		private void terrain_changed() {//числа режима высот — только когда он включен
+			for (JTextField f : terrain_values) {
+				f.setEnabled(terrain_box.isSelected());
+			}
 		}
 		private void fly_mode_changed() {
 			boolean learn = "learn".equals(fly_mode_box.getSelectedItem());
@@ -374,10 +429,20 @@ public class NewWorldDialog extends JDialog {
 			field_fly_port.setText(s.constants.getOrDefault("fly_port", String.valueOf(Constant.fly_port)));
 			field_fly_python.setText(s.constants.getOrDefault("fly_python", Constant.fly_python));
 			fly_mode_changed();
+			terrain_box.setSelected(!"0".equals(s.constants.getOrDefault("terrain", String.valueOf(Constant.terrain))));
+			for (int i = 0; i < terrain_fields.length; i++) {
+				terrain_values[i].setText(s.constants.getOrDefault(terrain_fields[i], constant_value(terrain_fields[i])));
+			}
+			terrain_changed();
+			relief_box.setSelectedItem(s.constants.getOrDefault("terrain_relief", Constant.terrain_relief));
+			for (int i = 0; i < relief_fields.length; i++) {
+				relief_values[i].setText(s.constants.getOrDefault(relief_fields[i], constant_value(relief_fields[i])));
+			}
+			relief_changed();
 			List<String[]> rows = new ArrayList<String[]>();
 			for (Map.Entry<String, String> e : s.constants.entrySet()) {
 				if (!e.getKey().equals("world_scale") && !by_populations.contains(e.getKey()) && !world_keys.contains(e.getKey())
-					&& !fly_keys.contains(e.getKey())) {//размер, перезапуск — на первой вкладке, мухи — на своей, остальное — у популяций
+					&& !fly_keys.contains(e.getKey()) && !terrain_keys.contains(e.getKey())) {//размер, перезапуск, высоты — на первой вкладке, мухи — на своей, остальное — у популяций
 					rows.add(new String[]{e.getKey(), e.getValue()});
 				}
 			}
@@ -487,6 +552,32 @@ public class NewWorldDialog extends JDialog {
 				throw new IllegalArgumentException("для переноса лучших отметьте хотя бы одно поле оценки");
 			}
 			s.constants.put("elite_fields", ef.toString());
+			s.constants.put("terrain", terrain_box.isSelected() ? "1" : "0");
+			for (int i = 0; i < terrain_fields.length; i++) {
+				String v = terrain_values[i].getText().trim();
+				try {
+					Double.parseDouble(v);
+				}catch (NumberFormatException e) {
+					throw new IllegalArgumentException("режим высот: " + terrain_fields[i] + " — нужно число, а не «" + v + "»");
+				}
+				s.constants.put(terrain_fields[i], v);
+			}
+			s.constants.put("terrain_relief", (String) relief_box.getSelectedItem());
+			for (int i = 0; i < relief_fields.length; i++) {
+				String v = relief_values[i].getText().trim();
+				try {
+					if (relief_fields[i].equals("terrain_size")) {
+						if (Integer.parseInt(v) < 1) {
+							throw new IllegalArgumentException("рельеф: волн гор по ширине мира — не меньше 1");
+						}
+					}else {
+						Double.parseDouble(v);
+					}
+				}catch (NumberFormatException e) {
+					throw new IllegalArgumentException("рельеф: " + relief_fields[i] + " — нужно число, а не «" + v + "»");
+				}
+				s.constants.put(relief_fields[i], v);
+			}
 			s.constants.put("fly_mode", (String) fly_mode_box.getSelectedItem());
 			int slots = Integer.parseInt(field_fly_slots.getText().trim());
 			if (slots < 1) {

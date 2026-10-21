@@ -25,7 +25,7 @@ public class GraphPanel extends JPanel {
 			History.ROLE0 + Bot.ROLE_MIXED, History.ROLE0 + Bot.ROLE_NONE, History.SEEDS,
 			History.SPROUTS, History.LEAVES, History.ROOTS, History.TRUNKS, History.CORPSES},
 		{History.ENERGY_CELLS, History.ORGANICS, History.ENERGY_TOTAL},
-		{History.BIRTHS, History.DEATHS, History.MUTATIONS},
+		{History.BIRTHS, History.DEATHS, History.MUTATIONS, History.GENOME_SWITCHES},
 		{History.death_index(1), History.death_index(2), History.death_index(3), History.death_index(4),
 			History.death_index(5), History.death_index(6), History.death_index(7), History.death_index(0),
 			History.death_index(8), History.death_index(9), History.death_index(10), History.death_index(11)},

@@ -731,7 +731,7 @@ public class Server {
 		g.put("plant cells", new int[]{History.SPROUTS, History.LEAVES, History.ROOTS, History.TRUNKS, History.CORPSES});
 		g.put("gases", new int[]{History.OXYGEN, History.CO2});
 		g.put("energy", new int[]{History.ENERGY_CELLS, History.ORGANICS, History.ENERGY_TOTAL, History.SOIL});
-		g.put("births & deaths", new int[]{History.BIRTHS, History.DEATHS, History.MUTATIONS});
+		g.put("births & deaths", new int[]{History.BIRTHS, History.DEATHS, History.MUTATIONS, History.GENOME_SWITCHES});
 		g.put("ms/step", new int[]{History.MS});
 		return g;
 	}

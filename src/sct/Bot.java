@@ -505,6 +505,9 @@ public class Bot extends BotSuper {
 				break;
 			}else if (command == 47) {//смена генома
 				int index_genom = commands[(index + 1) % max_mind] % max_genom;
+				if (index_genom != genom_current_idx) {//метрика events/step: переход на другой геном
+					Ledger.genome_switches++;
+				}
 				set_current_genom(index_genom);
 				index = 0;
 				//System.out.println("смена генома: "+index_genom);
@@ -1231,6 +1234,9 @@ public class Bot extends BotSuper {
 		//TODO: sector OFF
 		//double enr = Constant.pht_energy_list[sector] * (org_map[xpos][ypos] / Constant.pht_coeff) * n;
 		double enr = 9 * (org_map[xpos][ypos] / Constant.pht_coeff) * n;
+		if (Terrain.on()) {//режим высот: фотосинтез по температуре клетки
+			enr *= Terrain.pht_eff(xpos, ypos);
+		}
 
 		return(enr);
 	}

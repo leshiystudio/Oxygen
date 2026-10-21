@@ -51,6 +51,8 @@ public class Tools {
 				Bot bot = o_cell instanceof Bot b ? b : null;
 				System.out.printf("cell [%d, %d]: oxygen %.4f, co2 %.4f, organics %.1f, minerals %.1f%n",
 					x, y, w.oxygen_map[x][y], w.co2_map[x][y], w.org_map[x][y], w.mnr_map[x][y]);
+				System.out.printf("  height %.0f m, temperature %.1f °C, photosynthesis x%.2f%s%n", Terrain.meters(x, y),
+					Terrain.temperature(x, y), Terrain.pht_eff(x, y), Terrain.on() ? "" : " (heights mode off)");
 				IBot o = w.Map[x][y];
 				if (o != null && !(o instanceof Bot)) {
 					System.out.println("  " + o.describe());

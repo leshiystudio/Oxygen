@@ -18,7 +18,9 @@ public class Constant {
 	public static double ox_render_maximum_coeff = 0.25; //0.25;
 	public static double co2_render_maximum_coeff = 0.25; //0.25;
 	public static String[] draw_type_names = {"predators", "color", "energy", "clans", "age", "types", "chains", "queens", "kin", "population"}; //индекс = номер режима в Bot.get_color
-	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2", "height"};
+	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2", "height", "heat"};//фон одним номером — веб-просмотр
+	public static String[] ground_layer_names = {"none", "organics", "minerals", "height", "heat"};//фон окна: земля
+	public static String[] gas_layer_names = {"none", "oxygen", "co2"};//и газ поверх
 	public static String[] mouse_func_names = {"select", "set", "remove"};
 	public static int[] zoom_sizes = {5, 5, 10}; //{2, 5, 10};
 	//
@@ -70,6 +72,22 @@ public class Constant {
 	public static int mineral_influx = -1;//случайный приток минералов в нижнюю четверть мира: 1 — да, 0 — нет, -1 — только в мире без растений
 	public static String plant_actions_off = "";
 	public static String plant_brain = "";//мозг растений: think_new, think_old, neuro; пусто — по plant.think_mode//выключенные действия растений (PlantAction), например "eat,move"
+	//
+	//режим высот (Terrain): горы из карты высот, температура по высоте, снос газов, фотосинтез по теплу
+	public static int terrain = 0;//1 — включен; 0 — высоты на правила не влияют
+	public static double temp_low = 30;//температура на самой низкой высоте (0), °C
+	public static double temp_mid = 18;//на средней высоте (0.5)
+	public static double temp_high = 0;//на самой высокой (1)
+	public static double pht_t_min = 0;//фотосинтез не идет при температуре не выше этой
+	public static double pht_t_opt = 25;//лучший фотосинтез (x1)
+	public static double pht_t_max = 45;//фотосинтез не идет при температуре не ниже этой
+	public static double gas_drift = 0.005;//сдвиг газа при растекании за ход: CO2 вниз, O2 вверх — доля газа клетки на склоне 10 м на клетку
+	public static String terrain_relief = "peaks";//рельеф (при создании мира): peaks — горы с гребнями (Relief), noise — прежний шум
+	public static double terrain_height_min = 0;//высота самой низкой клетки, м
+	public static double terrain_height_max = 3000;//высота самой высокой клетки, м
+	public static double terrain_mountains = 0.4;//доля мира под горами (peaks)
+	public static double terrain_sharpness = 2.6;//острота гребней (peaks): больше — острее
+	public static int terrain_size = 3;//сколько волн гор укладывается по ширине мира (peaks): больше — горы мельче и чаще
 	//
 	public static double pht_coeff = 110; //400;
 	public static int[] pht_energy_list = {12, 11, 10, 9, 8, 7, 6, 5};
