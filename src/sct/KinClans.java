@@ -113,10 +113,16 @@ public class KinClans {
 		int diff = 0;
 		for (int i = 0; i < a.length; i++) {
 			int[] ai = a[i], bi = b[i];
-			for (int j = 0; j < ai.length; j++) {
-				if (ai[j] != bi[j] && ++diff > limit) {
+			int n = ai.length;
+			for (int j = 0; j < n; ) {//от различия к различию, совпадающие участки — векторно
+				int m = Arrays.mismatch(ai, j, n, bi, j, n);
+				if (m < 0) {
+					break;
+				}
+				if (++diff > limit) {
 					return diff;
 				}
+				j += m + 1;
 			}
 		}
 		return diff;

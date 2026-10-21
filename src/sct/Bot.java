@@ -1002,6 +1002,8 @@ public class Bot extends BotSuper {
 					new_bot.inherit_life(this);
 					//цвет клана наследуется и чуть сдвигается при каждой мутации — видны родственные группы
 					new_bot.clan_color = mutated ? drift_color(clan_color, 10) : clan_color;
+					new_bot.kin_color = kin_color;//клан по геному — родительский до пересчета KinClans (на сервере редкого)
+					new_bot.kin_id = kin_id;
 					//
 					if (seed == 1) {
 						new_bot.state = 1;

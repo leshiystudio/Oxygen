@@ -106,10 +106,16 @@ public class Plant extends BotSuper {
 		}
 		int cnt = 0;
 		int max = w.c.max_mind_diff_count;
-		for (int k = 0; k < genome.length; k++) {
-			if (genome[k] != p.genome[k] && ++cnt > max) {
+		int n = genome.length;
+		for (int k = 0; k < n; ) {//от различия к различию: Arrays.mismatch пробегает совпадающие участки векторно
+			int m = java.util.Arrays.mismatch(genome, k, n, p.genome, k, n);
+			if (m < 0) {
+				return false;
+			}
+			if (++cnt > max) {
 				return true;
 			}
+			k += m + 1;
 		}
 		return false;
 	}

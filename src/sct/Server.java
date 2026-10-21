@@ -27,7 +27,8 @@ import com.sun.net.httpserver.HttpServer;
 //Мир без окна для сервера: симуляция идет на полной скорости, кадр рисуется только по запросу зрителя.
 //  java -Djava.awt.headless=true -cp out sct.Server [--view-port 8080] [--control-port 8081] [--token T]
 //       [--resume] [--load файл.oxw] [--settings файл.properties] [--autosave минут] [--frame-ms 1000] [--brain-limit 10]
-//       [--trust-proxy] [--view-rps 10] [--view-burst 30] [--streams-per-ip 6] [--max-streams 500] [--preset ... --set ...]
+//       [--trust-proxy] [--view-rps 10] [--view-burst 30] [--streams-per-ip 6] [--max-streams 500]
+//       [--stats-every 10] [--kin-every 500] [--preset ... --set ...]
 //Порт просмотра — только чтение: страница, кадр, статус, графики. Порт управления — то же плюс
 //пауза, скорость, новый мир по настройкам (.properties как у диалога «Новый мир»), сохранение и загрузка.
 //Токен управления — --token или переменная OXYGEN_CONTROL_TOKEN; без токена управление открыто всем, кто достучится до порта.
@@ -38,6 +39,8 @@ public class Server {
 	static WorldBio w;
 	static String token;
 	static volatile double steps_per_sec = 0;
+	static int stats_every = 10;//точка истории и сверка журнала энергии — раз в столько шагов
+	static int kin_every = 500;//пересчет кланов по геному — раз в столько шагов
 	//
 	public static void main(String[] args) throws IOException {
 		int view_port = 8080, control_port = 8081, autosave_min = 0;
@@ -62,9 +65,15 @@ public class Server {
 				case "--resume": resume = true; break;
 				case "--load": load = args[++i]; break;
 				case "--settings": settings = args[++i]; break;
+				case "--stats-every": stats_every = Math.max(1, Integer.parseInt(args[++i])); break;
+				case "--kin-every": kin_every = Math.max(1, Integer.parseInt(args[++i])); break;
 				default: rest.add(args[i]);
 			}
 		}
+		//метрики и кланы — полные проходы по миру; на сервере реже, чем в окне: шаг быстрее
+		History.every = stats_every;
+		Ledger.check_every = stats_every;
+		KinClans.update_every = kin_every;
 		if (token != null && token.isBlank()) {
 			token = null;
 		}

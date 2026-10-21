@@ -51,12 +51,13 @@ public class History {
 	public static double[][] data = new double[names.length][capacity];
 	public static int[] step_of = new int[capacity];
 	public static int size = 0;
+	public static int every = 1;//точка раз в столько шагов (сервер — реже, см. --stats-every); действует с clear()
 	private static int stride = 1;
 	private static int skip = 0;
 	//
 	public static void clear() {
 		size = 0;
-		stride = 1;
+		stride = Math.max(1, every);
 		skip = 0;
 	}
 	//
@@ -65,6 +66,7 @@ public class History {
 			return;
 		}
 		skip = 0;
+		Ledger.sync(w);//полная энергия — на этот шаг, даже если журнал сверяется реже
 		if (size == capacity) {//прореживание вдвое
 			for (int i = 0; i < capacity / 2; i++) {
 				for (double[] s : data) {

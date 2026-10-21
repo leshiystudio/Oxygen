@@ -349,6 +349,17 @@ public class SelfTest {
 			w.step();
 		}
 		check("energy balance holds with mineral influx on", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Ledger.check_every = 7;//как на сервере: сверка и точки истории реже, расхождение копится между сверками
+		History.every = 10;
+		w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("history every 10 steps (" + History.size + " points)", History.size == 30 && History.step_of[29] == 300);
+		check("energy balance holds with rare checks", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		check("history total is measured on its step", History.data[History.ENERGY_TOTAL][29] == Ledger.measure(w));
+		Ledger.check_every = 1;
+		History.every = 1;
 		Constant.mineral_influx = -1;
 		Constant.starting_plant_count = 0;
 		Presets.seed = -1;

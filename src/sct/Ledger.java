@@ -105,15 +105,33 @@ public class Ledger {
 	//
 	public static void reset(WorldBio w) {//новый мир или загрузка: отсчет заново
 		total = measure(w);
+		expected = total;
+		pending = 0;
 		step_diff = 0;
 		total_diff = 0;
 	}
 	//
+	//Сверка — полный проход по существам и картам. Раз в check_every шагов (сервер — реже, см. --stats-every):
+	//между сверками приход и расход копятся в expected, так что расхождение не теряется, только
+	//total обновляется реже. step_diff — расхождение с прошлой сверки. History перед записью точки сверяет сам (sync).
+	public static int check_every = 1;
+	private static double expected;//ожидаемая полная энергия: total прошлой сверки + приход - расход с тех пор
+	private static int pending = 0;//шагов с прошлой сверки
 	public static void end_step(WorldBio w) {
-		double expected = total + in_step() - out_step();
+		expected = expected + in_step() - out_step();
+		if (++pending >= check_every) {
+			sync(w);
+		}
+	}
+	public static void sync(WorldBio w) {//сверить сейчас, если с прошлой сверки были шаги
+		if (pending == 0) {
+			return;
+		}
 		total = measure(w);
 		step_diff = total - expected;
 		total_diff += step_diff;
+		expected = total;
+		pending = 0;
 	}
 	//
 	public static double sum(double[][] m) {
