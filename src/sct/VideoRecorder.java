@@ -15,7 +15,8 @@ import java.util.concurrent.TimeUnit;
 //ВИДЕО «ПОСЛЕДНИЙ ЧАС» одного вида (режим ботов + фон) — план в docs/video-plan.md.
 //Поток захвата раз в record_ms под w.lock рисует вид в 1 px и копирует пиксели (4–7 мс на мире 400x400 —
 //это и есть вся цена для симуляции), поток записи отдает сырые пиксели в ffmpeg через stdin.
-//ffmpeg пишет HLS со скользящим окном: сегмент — минута реального времени, в плейлисте minutes сегментов,
+//По шагам (--record-steps) кадр снимает поток симуляции в конце каждого record_steps-го шага.
+//ffmpeg пишет HLS со скользящим окном: сегмент — минута реального времени (по шагам — 60 кадров), в плейлисте minutes сегментов,
 //старые он удаляет сам. Пересобирать ничего не нужно.
 //Между потоками — очередь на 2 кадра: ffmpeg не успевает — старый кадр выбрасывается (dropped), захват не ждет.
 //Мир на паузе — кадры не пишутся: окно — последний час работы мира. Новый мир того же размера — тот же поток
@@ -24,6 +25,13 @@ import java.util.concurrent.TimeUnit;
 public class VideoRecorder {
 	public static int record_ms = 1000;//кадр раз в столько мс реального времени
 	public static int minutes = 60;//длина окна
+	//по шагам вместо времени: кадр ровно на каждом record_steps-м шаге попытки (0 — по времени, record_ms).
+	//Снимается в потоке симуляции в конце шага (WorldBio.after_step) — цена та же, рендер 4–7 мс, но платится
+	//за каждый кадр: при шаге 10 мс и record_steps 50 — ~1 %, при 10 — ~5 %. Окно — window_steps шагов,
+	//сегмент — 60 кадров (record_steps * 60 шагов)
+	public static int record_steps = 0;
+	public static int window_steps = 0;//0 — 3600 кадров, как час при кадре в секунду
+	static final int frames_per_step_segment = 60;
 	public static int fps = 30;//скорость проигрывания: кадров записи в секунде видео
 	//качество H.264: больше — меньше файл. Кадры мира раз в секунду почти не похожи друг на друга, поэтому сжимаются плохо:
 	//на мире 400x400 (кадр 800x800) замер — crf 20 ~4 МБ, crf 28 ~2,3 МБ на минуту записи
@@ -102,9 +110,11 @@ public class VideoRecorder {
 	//
 	public void start() {
 		dir.mkdirs();
-		Thread c = new Thread(this::capture_loop, "video-capture-" + name);
-		c.setDaemon(true);
-		c.start();
+		if (record_steps <= 0) {//по шагам захват вызывает поток симуляции (on_step), своего потока нет
+			Thread c = new Thread(this::capture_loop, "video-capture-" + name);
+			c.setDaemon(true);
+			c.start();
+		}
 		Thread wr = new Thread(this::write_loop, "video-write-" + name);
 		wr.setDaemon(true);
 		wr.start();
@@ -126,6 +136,21 @@ public class VideoRecorder {
 			capture();
 		}
 	}
+	public void on_step() {//конец шага, под w.lock: кадр на каждом record_steps-м шаге
+		if (record_steps > 0 && w.steps > 0 && w.steps % record_steps == 0) {
+			capture();
+		}
+	}
+	static int segment_frames() {//кадров в сегменте: минута реального времени или 60 кадров по шагам
+		return record_steps > 0 ? frames_per_step_segment : Math.max(1, 60_000 / record_ms);
+	}
+	static int segments() {//сегментов в окне
+		if (record_steps <= 0) {
+			return minutes;
+		}
+		long steps = window_steps > 0 ? window_steps : 3600L * record_steps;
+		return (int) Math.max(1, (steps + (long) record_steps * frames_per_step_segment - 1) / ((long) record_steps * frames_per_step_segment));
+	}
 	//
 	boolean capture() {//снять кадр, если мир сдвинулся; false — пауза
 		int[] px;
@@ -146,6 +171,9 @@ public class VideoRecorder {
 		}
 		offer(new Frame(width, height, px));
 		return true;
+	}
+	int queued() {
+		return queue.size();
 	}
 	void offer(Frame f) {
 		while (!queue.offer(f)) {//полно — самый старый вон
@@ -230,7 +258,8 @@ public class VideoRecorder {
 			+ ",\"frames\":" + frames + ",\"dropped\":" + dropped + ",\"state\":" + Server.str(state) + "}";
 	}
 	public static String settings_json() {
-		return "\"record_ms\":" + record_ms + ",\"minutes\":" + minutes + ",\"fps\":" + fps;
+		return "\"record_ms\":" + record_ms + ",\"minutes\":" + minutes + ",\"fps\":" + fps
+			+ ",\"record_steps\":" + record_steps + ",\"window_steps\":" + (record_steps > 0 ? (long) segments() * record_steps * frames_per_step_segment : 0);
 	}
 	//
 	//ffmpeg: сырые кадры -> H.264 -> HLS. Кадр удваивается без сглаживания: в H.264 для браузера цвет хранится
@@ -240,7 +269,7 @@ public class VideoRecorder {
 	private class Ffmpeg implements Encoder {
 		private Process p;
 		public OutputStream start(int width, int height) throws IOException {
-			int per_segment = Math.max(1, 60_000 / record_ms);//кадров за минуту реального времени
+			int per_segment = segment_frames();
 			File playlist = new File(dir, "index.m3u8");
 			String flags = "delete_segments+independent_segments+program_date_time"
 				+ (playlist.isFile() ? "+append_list+discont_start" : "");//продолжить окно прошлого запуска, с разрывом
@@ -255,7 +284,7 @@ public class VideoRecorder {
 				"-vf", "scale=iw*2:ih*2:flags=neighbor,format=yuv420p",
 				"-c:v", "libx264", "-preset", "medium", "-tune", "animation", "-crf", String.valueOf(crf), "-threads", "1",
 				"-g", String.valueOf(per_segment), "-keyint_min", String.valueOf(per_segment), "-sc_threshold", "0",
-				"-f", "hls", "-hls_time", String.valueOf((double) per_segment / fps), "-hls_list_size", String.valueOf(minutes),
+				"-f", "hls", "-hls_time", String.valueOf((double) per_segment / fps), "-hls_list_size", String.valueOf(segments()),
 				"-hls_flags", flags, "-hls_segment_filename", new File(dir, "seg_%05d.ts").getPath(), playlist.getPath()));
 			ProcessBuilder pb = new ProcessBuilder(cmd);
 			pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);

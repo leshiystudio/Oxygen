@@ -420,9 +420,12 @@ async function play_video() {
 	} catch (e) { $("rec_info").textContent = "нет связи"; return; }
 	const v = rec.views.find(x => x.view === view);
 	if (!v) return;
+	const by_steps = rec.record_steps > 0;
 	const sec_per_min = 60000 / rec.record_ms / rec.fps;
-	$("video_title").textContent = `Last ${rec.minutes} min — ${v.mode_name} / ${v.bg_name}`;
-	$("video_meta").textContent = `1 мин мира = ${sec_per_min.toFixed(sec_per_min < 10 ? 1 : 0)} с видео`;
+	const scale = by_steps ? `1 с видео = ${fmt(rec.record_steps * rec.fps)} шагов (кадр каждые ${rec.record_steps})`
+		: `1 мин мира = ${sec_per_min.toFixed(sec_per_min < 10 ? 1 : 0)} с видео`;
+	$("video_title").textContent = (by_steps ? `Last ${fmt(rec.window_steps)} steps` : `Last ${rec.minutes} min`) + ` — ${v.mode_name} / ${v.bg_name}`;
+	$("video_meta").textContent = scale;
 	$("video").hidden = false;
 	if (hls) { hls.destroy(); hls = null; }
 	const url = location.origin + v.url;
@@ -432,7 +435,7 @@ async function play_video() {
 	if (window.Hls && Hls.isSupported()) {
 		hls = new Hls({ startPosition: 0, liveDurationInfinity: true });//с начала окна, а не с «живого края»
 		hls.on(Hls.Events.FRAG_CHANGED, (ev, d) => {//реальное время показываемого куска (program_date_time)
-			if (d.frag.programDateTime) $("video_meta").textContent = `${new Date(d.frag.programDateTime).toLocaleString()} · 1 мин мира = ${sec_per_min.toFixed(sec_per_min < 10 ? 1 : 0)} с видео`;
+			if (d.frag.programDateTime) $("video_meta").textContent = `${new Date(d.frag.programDateTime).toLocaleString()} · ${scale}`;
 		});
 		hls.on(Hls.Events.ERROR, (ev, d) => { if (d.fatal) $("video_meta").textContent = "видео пока недоступно — запись только началась или прервалась"; });
 		hls.loadSource(url);

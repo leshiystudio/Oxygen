@@ -635,7 +635,12 @@ public class WorldBio extends JPanel implements MouseWheelListener, MouseListene
 		if (extinct(live, live_other) || forced_restart_due()) {
 			auto_restart();
 		}
+		Runnable hook = after_step;
+		if (hook != null) {
+			hook.run();
+		}
 	}
+	public volatile Runnable after_step;//конец шага, под lock: видео по шагам (VideoRecorder.on_step); null — ничего
 	private boolean forced_restart_due() {//принудительный перезапуск: попытка прожила restart_steps шагов
 		return Constant.restart_forced != 0 && Constant.restart_steps > 0 && steps >= Constant.restart_steps;
 	}

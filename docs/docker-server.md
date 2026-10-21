@@ -85,6 +85,12 @@ nginx нужно `proxy_buffering off` (сервер шлет и `X-Accel-Buffer
 | просмотр | 10–20 Мбит/с при 30 кадрах/с — для туннеля много: `--record-fps 15` вдвое меньше (час — 4 мин видео), `--record-crf 32` — еще меньше ценой четкости, `--record-ms 2000` — вдвое меньше и файл |
 | задержка | свежая минута появляется в плейлисте через ~1,5 мин (кодировщик копит кадры) |
 
+**По шагам** (`--record-steps 50`) кадр снимается в потоке симуляции в конце каждого 50-го шага: в видео — ровно
+шаги 50, 100, 150…, скорость мира на запись не влияет (секунда видео — всегда `N × fps` шагов). Цена та же — рендер
+4–7 мс на кадр, но теперь она зависит от частоты: при шаге 10 мс кадр каждые 50 шагов — ~1 % скорости на вид,
+каждые 10 — ~5 %, каждый шаг — +40…70 %. Окно — шаги, а не минуты: сегмент — 60 кадров, в плейлисте столько
+сегментов, чтобы покрыть `--record-window-steps`. На странице вместо «1 мин мира = …» — «1 с видео = N шагов».
+
 Сегменты отдает тот же порт просмотра (`/video/<вид>/index.m3u8`), и на них действует лимит запросов
 `--view-rps`; плеер — `hls.js` из `src/sct/web` (Safari — свой). Без ffmpeg в системе запись выключается
 (строка в логе, `state: missing` в статусе), сервер работает как раньше.
@@ -108,12 +114,13 @@ think_new (32 гена x 23 команды, рамка — активный ге
 
 Туннель [CloudPub](https://cloudpub.ru) публикует просмотр по постоянному адресу `https://….cloudpub.ru`:
 порты хоста наружу не открываются, HTTPS дает туннель. В `docker-compose.yml` это сервис `cloudpub`
-(профиль `cloudpub`); `.env.example` уже настроен на этот вариант.
+— обычный, без профиля, как прод-туннель SW.APP: поднимается любым `docker compose up -d` и после
+перезагрузки хоста; `.env.example` уже настроен на этот вариант.
 
 ```bash
 git clone … && cd Oxygen
 cp .env.example .env          # CLOUDPUB_TOKEN — из личного кабинета CloudPub; OXYGEN_CONTROL_TOKEN
-docker compose up -d --build  # поднимет oxygen и cloudpub (COMPOSE_PROFILES=cloudpub в .env)
+docker compose up -d --build  # поднимет oxygen и cloudpub
 docker compose logs cloudpub  # публичный адрес; он же — в личном кабинете
 ```
 
@@ -121,7 +128,10 @@ docker compose logs cloudpub  # публичный адрес; он же — в 
   `oxygen:8080,oxygen:8081` — и управление, отдельным адресом; тогда `OXYGEN_CONTROL_TOKEN` обязателен
   (длинный случайный: `openssl rand -hex 24`). Basic auth самого CloudPub (`--auth basic`) на управление
   не ставить: он занимает тот же заголовок `Authorization`, что и токен управления.
-- **Адрес не меняется** между перезапусками, пока жив том `cloudpub-config` (там агент CloudPub).
+- **Адрес не меняется** между перезапусками, пока жив том `oxygen_cloudpub-config` (там агент CloudPub).
+  Имена томов (`oxygen_worlds`, `oxygen_video`, `oxygen_cloudpub-config`) закреплены в `docker-compose.yml` и не
+  зависят от имени каталога проекта. Не удалять их: `docker compose down -v` стирает агента (новый адрес) и сохранения.
+  Проверить агента и публикации: `docker compose exec cloudpub /clo ls`.
 - **Порты на хосте** — только `127.0.0.1` (`OXYGEN_VIEW_PORT=8090`, `8081`): с самого сервера и через SSH.
   Так туннель — единственная дорога снаружи.
 - **Адрес зрителя.** За туннелем все запросы приходят от контейнера CloudPub, и лимиты «по адресу» стали бы
@@ -136,8 +146,8 @@ docker compose logs cloudpub  # публичный адрес; он же — в 
 ## Запуск без туннеля
 
 ```bash
-cp .env.example .env          # убрать COMPOSE_PROFILES, OXYGEN_VIEW_BIND=0.0.0.0, OXYGEN_VIEW_PORT=80, OXYGEN_TRUST_PROXY=0
-docker compose up -d --build
+cp .env.example .env          # OXYGEN_VIEW_BIND=0.0.0.0, OXYGEN_VIEW_PORT=80, OXYGEN_TRUST_PROXY=0
+docker compose up -d --build oxygen     # только oxygen: без токена CloudPub туннель перезапускался бы по кругу
 ```
 
 Просмотр — `http://<сервер>/`. Управление по умолчанию снаружи недоступно — через SSH-туннель:
@@ -155,7 +165,6 @@ ssh -L 8081:localhost:8081 user@server     # затем http://localhost:8081/ �
 | Переменная | По умолчанию | Смысл |
 |---|---|---|
 | `OXYGEN_CONTROL_TOKEN` | пусто | пароль порта управления; пусто — без пароля |
-| `COMPOSE_PROFILES` | — (в `.env.example`: `cloudpub`) | `cloudpub` — поднять туннель |
 | `CLOUDPUB_TOKEN` | пусто | токен агента CloudPub |
 | `CLOUDPUB_HTTP` | `oxygen:8080` | что публикует туннель, через запятую |
 | `OXYGEN_TRUST_PROXY` | `0` (в `.env.example`: `1`) | адрес зрителя — из `X-Forwarded-For` / `X-Real-IP` прокси во внутренней сети |
@@ -181,6 +190,7 @@ ssh -L 8081:localhost:8081 user@server     # затем http://localhost:8081/ �
 | `--stats-every N` | точка истории графиков и сверка журнала энергии — раз в N шагов (по умолчанию 10; в окне — каждый шаг). Расхождение баланса копится и между сверками |
 | `--record режим_фон[,…]` | видео «последний час» этих видов (ниже); пусто — без записи |
 | `--record-ms N`, `--record-minutes N`, `--record-fps N`, `--record-crf N` | кадр раз в N мс (1000), окно (60 мин), скорость просмотра (30 кадров/с), качество H.264 (28; больше — меньше файл) |
+| `--record-steps N`, `--record-window-steps W` | вместо времени — кадр ровно на каждом N-м шаге попытки, окно — последние W шагов (по умолчанию 3600 кадров = 3600·N шагов). `--record-ms` и `--record-minutes` тогда не действуют |
 | `--kin-every N` | пересчет кланов по геному (режим Kin, счетчик кланов) — раз в N шагов (по умолчанию 500; в окне — 50). Новорожденный до пересчета — в клане родителя |
 | `--view-port`, `--control-port` | порты внутри контейнера; `--control-port 0` — без управления вовсе |
 | `--token T` | токен вместо `OXYGEN_CONTROL_TOKEN` |
@@ -221,6 +231,11 @@ ssh -L 8081:localhost:8081 user@server     # затем http://localhost:8081/ �
 docker compose cp "./saved worlds/my.oxw" "oxygen:/data/saved worlds/"
 docker compose cp "oxygen:/data/saved worlds/autosave.oxw" .
 ```
+
+Если мир при старте не загружается (файл испорчен или в нем мухи, а сервиса мозга мухи в контейнере нет —
+[flybrain/README.md](../flybrain/README.md)), сервер не падает: пишет причину в лог, `autosave.oxw` откладывает
+как `autosave-failed-<дата>-<время>.oxw` (иначе его перезаписало бы следующее автосохранение) и запускает новый
+мир по настройкам запуска. Отложенный файл виден в списке на порту управления.
 
 ## Без Docker
 

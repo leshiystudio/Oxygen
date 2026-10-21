@@ -1,6 +1,7 @@
 # Oxygen на сервере:  cp .env.example .env  (задать токены)  &&  docker compose up -d --build
-# Публикация наружу — туннелем CloudPub (профиль cloudpub, включен в .env.example через COMPOSE_PROFILES)
-# или портом хоста напрямую (OXYGEN_VIEW_BIND=0.0.0.0, OXYGEN_VIEW_PORT=80). Подробно — docs/docker-server.md.
+# Публикация наружу — туннелем CloudPub (сервис cloudpub, поднимается вместе с oxygen, как в SW.APP)
+# или портом хоста напрямую (OXYGEN_VIEW_BIND=0.0.0.0, OXYGEN_VIEW_PORT=80; тогда: docker compose up -d oxygen).
+# Подробно — docs/docker-server.md.
 services:
   oxygen:
     build: .
@@ -29,8 +30,7 @@ services:
   # без открытых портов на хосте. Адрес — в `docker compose logs cloudpub` и в личном кабинете CloudPub.
   cloudpub:
     image: cloudpub/cloudpub:latest
-    profiles: ["cloudpub"]
-    restart: unless-stopped
+    restart: unless-stopped                                                 # без профиля: любой up / перезагрузка хоста поднимают и туннель
     command: run
     environment:
       TOKEN: ${CLOUDPUB_TOKEN:-}
@@ -40,7 +40,13 @@ services:
     volumes:
       - cloudpub-config:/home/cloudpub                                      # агент и его адрес не меняются при перезапуске
 
+# Имена томов закреплены: не зависят от имени каталога проекта (другой каталог — другой проект compose —
+# иначе получил бы пустые тома: новый агент CloudPub с новым адресом и без сохранений).
+# Имена — те, что compose уже создал для проекта oxygen, поэтому существующие данные остаются на месте.
 volumes:
   worlds:
+    name: oxygen_worlds
   video:
+    name: oxygen_video
   cloudpub-config:
+    name: oxygen_cloudpub-config

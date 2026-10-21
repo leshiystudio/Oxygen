@@ -29,7 +29,7 @@ import com.sun.net.httpserver.HttpServer;
 //       [--resume] [--load файл.oxw] [--settings файл.properties] [--autosave минут] [--frame-ms 1000] [--brain-limit 10]
 //       [--trust-proxy] [--view-rps 10] [--view-burst 30] [--streams-per-ip 6] [--max-streams 500]
 //       [--stats-every 10] [--kin-every 500]
-//       [--record 0_2,8_0] [--record-ms 1000] [--record-minutes 60] [--record-fps 30] [--record-crf 28] [--record-dir video] [--ffmpeg ffmpeg]
+//       [--record 0_2,8_0] [--record-ms 1000] [--record-minutes 60] [--record-steps N] [--record-window-steps W] [--record-fps 30] [--record-crf 28] [--record-dir video] [--ffmpeg ffmpeg]
 //       [--preset ... --set ...]
 //Порт просмотра — только чтение: страница, кадр, статус, графики. Порт управления — то же плюс
 //пауза, скорость, новый мир по настройкам (.properties как у диалога «Новый мир»), сохранение и загрузка.
@@ -71,6 +71,8 @@ public class Server {
 				case "--kin-every": kin_every = Math.max(1, Integer.parseInt(args[++i])); break;
 				case "--record": record = args[++i]; break;
 				case "--record-ms": VideoRecorder.record_ms = Math.max(200, Integer.parseInt(args[++i])); break;
+				case "--record-steps": VideoRecorder.record_steps = Math.max(0, Integer.parseInt(args[++i])); break;
+				case "--record-window-steps": VideoRecorder.window_steps = Math.max(0, Integer.parseInt(args[++i])); break;
 				case "--record-minutes": VideoRecorder.minutes = Math.max(1, Integer.parseInt(args[++i])); break;
 				case "--record-fps": VideoRecorder.fps = Math.max(1, Integer.parseInt(args[++i])); break;
 				case "--record-crf": VideoRecorder.crf = Math.max(0, Math.min(51, Integer.parseInt(args[++i]))); break;
@@ -96,8 +98,21 @@ public class Server {
 			load = auto.getPath();
 		}
 		if (load != null) {
-			WorldIO.load(w, find(load));
-			log("загружен мир " + load + ", шаг " + w.steps);
+			File f = find(load);
+			try {
+				WorldIO.load(w, f);
+				log("загружен мир " + load + ", шаг " + w.steps);
+			}catch (IOException | RuntimeException e) {//мир не открывается (например, мухи без сервиса мозга): не падать —
+				//под restart: unless-stopped падение при старте повторяется без конца, и сервер не поднимается вовсе
+				log("мир " + load + " не загрузился: " + e.getMessage());
+				if (f.getName().equals(autosave_name) && f.isFile()) {//в сторону: иначе через --autosave минут его перезапишет новый мир
+					File aside = new File(dir, "autosave-failed-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".oxw");
+					Files.move(f.toPath(), aside.toPath());
+					log("автосохранение отложено как «" + aside.getName() + "» — загрузить его можно с порта управления, когда причина устранена");
+				}
+				WorldSettings.startup.copy().apply(w);
+				log("новый мир по настройкам запуска");
+			}
 		}else if (settings != null) {
 			WorldSettings s = WorldSettings.load(find(settings));
 			s.apply(w);
@@ -112,7 +127,12 @@ public class Server {
 		}
 		if (!VideoRecorder.all.isEmpty()) {
 			Runtime.getRuntime().addShutdownHook(new Thread(() -> VideoRecorder.all.forEach(VideoRecorder::stop), "video-on-exit"));
-			log("видео: кадр раз в " + VideoRecorder.record_ms + " мс, окно " + VideoRecorder.minutes + " мин, "
+			if (VideoRecorder.record_steps > 0) {
+				w.after_step = () -> VideoRecorder.all.forEach(VideoRecorder::on_step);
+			}
+			log("видео: " + (VideoRecorder.record_steps > 0
+				? "кадр каждые " + VideoRecorder.record_steps + " шагов, окно " + (long) VideoRecorder.segments() * VideoRecorder.record_steps * VideoRecorder.frames_per_step_segment + " шагов, "
+				: "кадр раз в " + VideoRecorder.record_ms + " мс, окно " + VideoRecorder.minutes + " мин, ")
 				+ VideoRecorder.fps + " кадров/с при просмотре");
 		}
 		//

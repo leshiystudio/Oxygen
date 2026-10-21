@@ -103,6 +103,41 @@ public class SelfTest {
 			}
 		}
 		check("wrong views are errors", bad);
+		VideoRecorder.record_steps = 3;//кадр по шагам: из конца шага, ровно на каждом 3-м
+		VideoRecorder by_steps = new VideoRecorder(w, 0, 0);
+		java.io.ByteArrayOutputStream sink2 = new java.io.ByteArrayOutputStream();
+		by_steps.encoder = new VideoRecorder.Encoder() {
+			public java.io.OutputStream start(int width, int height) {
+				return sink2;
+			}
+			public void stop() {
+			}
+		};
+		java.util.List<Integer> at = new java.util.ArrayList<Integer>();
+		w.after_step = () -> {
+			int before = by_steps.frames + by_steps.queued();
+			by_steps.on_step();
+			if (by_steps.frames + by_steps.queued() > before) {
+				at.add(w.steps);
+			}
+		};
+		int start = w.steps;
+		for (int i = 0; i < 10; i++) {
+			w.step();
+			by_steps.write_next(0);
+		}
+		w.after_step = null;
+		boolean every3 = !at.isEmpty();
+		for (int s : at) {
+			every3 &= s % 3 == 0;
+		}
+		check("record by steps: a frame exactly every 3rd step (" + at + ")", every3 && at.size() == (start + 10) / 3 - start / 3 && by_steps.frames == at.size());
+		VideoRecorder.window_steps = 1000;
+		check("window by steps: segments of 60 frames cover it", VideoRecorder.segments() == 6 && VideoRecorder.segment_frames() == 60);
+		VideoRecorder.window_steps = 0;
+		check("default window by steps — 3600 frames", VideoRecorder.segments() == 60);
+		VideoRecorder.record_steps = 0;
+		check("by time: a segment is a minute of frames", VideoRecorder.segment_frames() == 60_000 / VideoRecorder.record_ms && VideoRecorder.segments() == VideoRecorder.minutes);
 		check("only playlist and segments are served", VideoRecorder.valid_file("index.m3u8") && VideoRecorder.valid_file("seg_00012.ts")
 			&& !VideoRecorder.valid_file("..") && !VideoRecorder.valid_file("seg_1.ts") && !VideoRecorder.valid_file("seg_00001.ts/../x")
 			&& !VideoRecorder.valid_file("index.m3u8.tmp") && !VideoRecorder.valid_file(""));
