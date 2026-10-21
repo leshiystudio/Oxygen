@@ -73,16 +73,16 @@ public class NewWorldDialog extends JDialog {
 		private final JTable populations_table = new JTable(populations_model);
 		private final InteractionModel interaction_model = new InteractionModel();
 		private final JTable interaction_table = new JTable(interaction_model);
-		private final ParamTable constants_table = new ParamTable();
+		private final ParamTable constants_table = new ParamTable(ParamDocs.constant);
 		private final JComboBox<Population> bot_pop_box = new JComboBox<Population>();
 		private final JPanel bot_actions = new JPanel(new GridLayout(0, 2, 4, 2));
 		private final JComboBox<Population> plant_pop_box = new JComboBox<Population>();
 		private final JComboBox<String> plant_preset_box = new JComboBox<String>(new String[]{"config", "original", "noleak", "balanced"});
-		private final ParamTable plant_table = new ParamTable();
+		private final ParamTable plant_table = new ParamTable(ParamDocs.plant);
 		private final JPanel plant_actions = new JPanel(new GridLayout(0, 2, 4, 2));
 		private Population plant_shown;//чьи параметры сейчас в plant_table
 		private final JComboBox<Population> neuro_pop_box = new JComboBox<Population>();
-		private final ParamTable neuro_table = new ParamTable();
+		private final ParamTable neuro_table = new ParamTable(ParamDocs.neuro);
 		private final javax.swing.JTextArea neuro_sensors = new javax.swing.JTextArea();
 		private Population neuro_shown;//чьи параметры сейчас в neuro_table
 		//в диалоге это задают популяции (численность, мозг, действия) — в таблице параметров не показываются
