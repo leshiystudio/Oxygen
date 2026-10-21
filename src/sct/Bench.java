@@ -35,8 +35,10 @@ public class Bench {
 			if (i % 100 == 0 || i == steps) {
 				double ms = (System.nanoTime() - block) / 1e6 / (i % 100 == 0 ? 100 : i % 100);
 				block = System.nanoTime();
-				System.out.printf("step %6d  bots %6d  seeds %5d  queens %3d  clans %5d  energy %.4gM  births %4d  deaths %4d  balance %.2g  %.2f ms/step%n",
-					i, w.b_count, w.org_count, (int) History.data[History.QUEENS][History.size - 1], KinClans.clans,
+				int last = History.size - 1;
+				System.out.printf("step %6d  bots %6d  seeds %5d  queens %3d  plants %6d  corpses %5d  clans %5d  energy %.4gM  births %4d  deaths %4d  balance %.2g  %.2f ms/step%n",
+					i, w.b_count, w.org_count, (int) History.data[History.QUEENS][last], (int) History.data[History.PLANTS][last],
+					(int) History.data[History.CORPSES][last], KinClans.clans,
 					Ledger.total / 1e6, Ledger.births, Ledger.deaths_total(), Ledger.total_diff, ms);
 			}
 		}

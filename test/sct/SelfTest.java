@@ -25,6 +25,16 @@ public class SelfTest {
 		energy_balance_holds();
 		save_load_continues_same_world();
 		presets_set_field();
+		disabled_action_does_nothing();
+		own_brain_runs();
+		plants_world();
+		plant_child_before_parent();
+		mixed_world();
+		interactions();
+		world_settings();
+		neuro();
+		leaves_use_co2();
+		restart_and_elite();
 
 		System.out.println();
 		System.out.println("passed: " + passed + ", failed: " + failed);
@@ -44,8 +54,8 @@ public class SelfTest {
 	//пустой мир с одной органикой, без ботов — для точечных сценариев
 	private static WorldBio empty_world() {
 		WorldBio w = new WorldBio(false);
-		for (Bot b : w.objects) {
-			w.Map[b.xpos][b.ypos] = null;
+		for (IBot o : w.objects) {
+			w.Map[o.cell_x()][o.cell_y()] = null;
 		}
 		w.objects.clear();
 		return w;
@@ -57,14 +67,14 @@ public class SelfTest {
 		return b;
 	}
 	private static Bot multiply(WorldBio w, Bot parent, int rot, boolean chain) {
-		ListIterator<Bot> it = w.objects.listIterator(w.objects.indexOf(parent) + 1);
+		ListIterator<IBot> it = w.objects.listIterator(w.objects.indexOf(parent) + 1);
 		int before = w.objects.size();
 		parent.multiply(rot, 0, 0, 0, chain, it);
 		if (w.objects.size() == before) {
 			return null;
 		}
 		int[] p = parent.get_rotate_position(rot);
-		return w.Map[p[0]][p[1]];
+		return (Bot) w.Map[p[0]][p[1]];
 	}
 	//
 	private static void genome_is_independent() {
@@ -171,10 +181,16 @@ public class SelfTest {
 	//
 	private static long state_hash(WorldBio w) {
 		long h = w.steps;
-		for (Bot b : w.objects) {
-			if (b.killed == 0) {
-				h = h * 31 + b.xpos * 1000 + b.ypos;
-				h = h * 31 + Double.doubleToLongBits(b.energy);
+		for (IBot o : w.objects) {
+			if (o.alive()) {
+				h = h * 31 + o.cell_x() * 1000 + o.cell_y();
+				h = h * 31 + Double.doubleToLongBits(o.ledger_energy());
+				h = h * 31 + o.species().ordinal();
+			}
+		}
+		for (double[] row : w.mnr_map) {
+			for (double v : row) {
+				h = h * 31 + Double.doubleToLongBits(v);
 			}
 		}
 		for (double[] row : w.org_map) {
@@ -205,6 +221,405 @@ public class SelfTest {
 			w.step();
 		}
 		check("loaded world continues the same way", state_hash(w) == continued);
+		//смешанный мир (формат 2): боты и растения, популяции, генератор растений
+		Presets.seed = 9;
+		Constant.starting_plant_count = 200;
+		w = new WorldBio(false);
+		Constant.starting_plant_count = 0;
+		for (int i = 0; i < 50; i++) {
+			w.step();
+		}
+		f = File.createTempFile("oxygen_selftest", ".oxw");
+		f.deleteOnExit();
+		WorldIO.save(w, f);
+		saved_hash = state_hash(w);
+		for (int i = 0; i < 50; i++) {
+			w.step();
+		}
+		continued = state_hash(w);
+		WorldIO.load(w, f);
+		check("mixed world: loaded state equals saved", state_hash(w) == saved_hash);
+		for (int i = 0; i < 50; i++) {
+			w.step();
+		}
+		check("mixed world: continues the same way after load", state_hash(w) == continued);
+		Presets.seed = -1;
+	}
+	//
+	private static void disabled_action_does_nothing() {
+		System.out.println("actions:");
+		Presets.seed = 3;
+		Constant.bot_actions_off = "attack";
+		WorldBio w = new WorldBio(false);
+		int eaten = 0;
+		for (int i = 0; i < 300; i++) {
+			w.step();
+			eaten += Ledger.deaths[Ledger.DIE_EATEN];
+		}
+		check("genome cannot attack when attack is off", eaten == 0);
+		Bot b = null;
+		for (IBot o : w.objects) {
+			if (o instanceof Bot bb && bb.state == 0) {
+				b = bb;
+				break;
+			}
+		}
+		check("run() of a disabled action returns false", b != null && !BotAction.ATTACK.run(b, null, BotAction.FORWARD));
+		Constant.bot_actions_off = "";
+		BotAction.configure("");
+		boolean thrown = false;
+		try {
+			BotAction.configure("atack");
+		}catch (IllegalArgumentException e) {
+			thrown = true;
+		}
+		check("typo in action name is an error", thrown);
+		BotAction.configure("");
+		Presets.seed = -1;
+	}
+	//
+	private static void own_brain_runs() {
+		System.out.println("own brain:");
+		Presets.seed = 4;
+		Constant.bot_brain = "simple";
+		WorldBio w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("world of 'simple' brains lives (" + w.b_count + " bots)", w.b_count > 0);
+		check("energy balance holds with own brain", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Constant.bot_brain = "genome";
+		Presets.seed = -1;
+	}
+	//
+	private static void plants_world() {
+		System.out.println("plants:");
+		Presets.seed = 6;
+		Constant.starting_bot_count = 0;
+		Constant.starting_plant_count = 400;
+		for (int mode : new int[]{sct.plants.PlantConfig.THINK_NEW, sct.plants.PlantConfig.THINK_OLD}) {
+			sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+			sct.plants.PlantConfig.current.think_mode = mode;
+			WorldBio w = new WorldBio(false);
+			for (int i = 0; i < 300; i++) {
+				w.step();
+			}
+			String name = mode == sct.plants.PlantConfig.THINK_NEW ? "think_new" : "think_old";
+			check(name + ": world of plants lives (" + w.plant_count + " cells)", w.plant_count > 0);
+			check(name + ": energy balance is exact (" + Ledger.total_diff + ")", Ledger.total_diff == 0);
+		}
+		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+		Constant.starting_bot_count = 300;
+		Constant.starting_plant_count = 0;
+		Presets.seed = -1;
+	}
+	//
+	private static void plant_child_before_parent() {
+		System.out.println("plant birth:");
+		Constant.starting_plant_count = 1;
+		WorldBio w = empty_world();
+		Constant.starting_plant_count = 0;
+		sct.plants.PlantWorld pw = new sct.plants.PlantWorld(w.Map, w.org_map, new double[w.Map.length][w.Map[0].length], w.objects, new sct.plants.PlantConfig());
+		Bot before = put(w, 2, 2, 100);
+		sct.plants.Plant p = sct.plants.Plant.seedling(pw, 10, 10, sct.plants.ThinkNew.instance);
+		p.energy = 1000;
+		w.objects.add(p);
+		w.Map[10][10] = p;
+		Bot after = put(w, 4, 4, 100);
+		ListIterator<IBot> it = w.objects.listIterator(w.objects.indexOf(p) + 1);//курсор после родителя, как в ходе мира
+		boolean born = sct.plants.PlantAction.REPRODUCE.run(p, it, 1, 2, sct.plants.Plant.ILIVE);
+		check("plant child is born", born && w.objects.size() == 4);
+		check("child stands right before parent in the list", w.objects.indexOf(p) == 2 && w.objects.get(1) instanceof sct.plants.Plant && w.objects.get(1) != p);
+		check("iterator continues after parent", it.hasNext() && it.next() == after && w.objects.get(0) == before);
+	}
+	//
+	private static void mixed_world() {
+		System.out.println("mixed world:");
+		Presets.seed = 8;
+		Constant.starting_plant_count = 300;
+		WorldBio w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("bots and plants live together (" + w.b_count + " bots, " + w.plant_count + " plant cells)", w.b_count + w.plant_count > 0);
+		check("energy balance holds in mixed world", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Constant.mineral_influx = 1;//приток минералов при растениях — отдельная статья журнала
+		w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("energy balance holds with mineral influx on", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Ledger.check_every = 7;//как на сервере: сверка и точки истории реже, расхождение копится между сверками
+		History.every = 10;
+		w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("history every 10 steps (" + History.size + " points)", History.size == 30 && History.step_of[29] == 300);
+		check("energy balance holds with rare checks", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		check("history total is measured on its step", History.data[History.ENERGY_TOTAL][29] == Ledger.measure(w));
+		Ledger.check_every = 1;
+		History.every = 1;
+		Constant.mineral_influx = -1;
+		Constant.starting_plant_count = 0;
+		Presets.seed = -1;
+	}
+	//
+	private static void interactions() {
+		System.out.println("interactions:");
+		WorldBio w = empty_world();
+		Population bots = new Population("bots", Species.OXYGEN_BOT, "genome", 0, Color.BLUE);
+		Population flora = new Population("plants", Species.PLANT, "think_new", 0, Color.GREEN);
+		Population other_bots = new Population("other bots", Species.OXYGEN_BOT, "genome", 0, Color.RED);
+		bots.id = 0;
+		flora.id = 1;
+		other_bots.id = 2;
+		Interaction ia = new Interaction(3);
+		ia.eat[0][1] = 0.5;//бот ест растение с КПД 0.5
+		ia.exchange[0][2] = 2.0;//бот ест чужого бота с обменом x2
+		ia.seed_kills[0][2] = false;
+		Interaction.current = ia;
+		sct.plants.PlantWorld pw = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.objects, new sct.plants.PlantConfig());
+		pw.pop = flora;
+		//бот ест растение: половина энергии ему, остаток — в почву
+		Bot b = put(w, 20, 20, 100);
+		b.pop = bots;
+		sct.plants.Plant p = sct.plants.Plant.seedling(pw, 21, 20, sct.plants.ThinkNew.instance);//справа (направление 2)
+		p.energy = 300;
+		w.objects.add(p);
+		w.Map[21][20] = p;
+		double soil_before = w.mnr_map[21][20];
+		Ledger.begin_step();
+		b.attack(2);
+		check("bot ate plant with efficiency 0.5 (+150)", b.energy == 250 && p.killed == 1);
+		check("rest of plant energy went to soil (+150)", w.mnr_map[21][20] - soil_before == 150);
+		//обмен x2 — разница в журнале
+		Bot alien = put(w, 21, 20, 100);
+		alien.pop = other_bots;
+		double before = b.energy;
+		b.attack(2);
+		check("exchange x2 doubles the gain (+200)", b.energy - before == 200);
+		check("exchange difference is a ledger item (+100)", Ledger.in_exchange == 100);
+		//передача энергии между популяциями закрыта по умолчанию
+		Bot neighbour = put(w, 21, 20, 100);
+		neighbour.pop = other_bots;
+		before = neighbour.energy;
+		b.give(2);
+		check("no energy sharing between populations by default", neighbour.energy == before);
+		//семечко, которому запрещено убивать, гибнет одно
+		Bot seed = put(w, 30, 30, 100);
+		seed.pop = bots;
+		seed.state = 1;
+		seed.rotate = 2;
+		seed.seed_time = 5;
+		Bot target = put(w, 31, 30, 100);
+		target.pop = other_bots;
+		seed.Update(null);
+		check("seed without seed_kills dies alone", seed.killed == 1 && target.killed == 0);
+		//росток ест бота: КПД по таблице (1.0), энергия растения целая
+		Interaction.current.eat[1][0] = 1.0;
+		Bot prey = put(w, 41, 40, 77);
+		prey.pop = bots;
+		sct.plants.Plant sprout = sct.plants.Plant.seedling(pw, 40, 40, sct.plants.ThinkNew.instance);
+		sprout.energy = 10;
+		w.objects.add(sprout);
+		w.Map[40][40] = sprout;
+		boolean ate = sct.plants.PlantAction.EAT.run(sprout, null);
+		check("sprout ate a bot (+77)", ate && prey.killed == 1 && sprout.energy == 87);
+		Interaction.current = new Interaction(0);
+	}
+	//
+	private static void world_settings() {
+		System.out.println("new world settings:");
+		WorldSettings ws = WorldSettings.capture();
+		ws.seed = 12;
+		ws.populations.clear();
+		Population b = new Population("hunters", Species.OXYGEN_BOT, "simple", 200, Color.RED);
+		b.actions_off("seed,give");
+		Population p = new Population("forest", Species.PLANT, "think_old", 150, Color.GREEN);
+		p.plant_config = sct.plants.PlantConfig.preset("original");
+		p.plant_config.leaf_sun_base = 42;
+		ws.populations.add(b);
+		ws.populations.add(p);
+		ws.interaction = new Interaction(2);
+		ws.interaction.eat[0][1] = 0.25;
+		ws.interaction.exchange[1][0] = 1.5;
+		File f;
+		WorldSettings back;
+		try {
+			f = File.createTempFile("oxygen_selftest", ".properties");
+			f.deleteOnExit();
+			ws.save(f);
+			back = WorldSettings.load(f);
+		}catch (java.io.IOException e) {
+			check("settings save/load: " + e, false);
+			return;
+		}
+		check("populations survive save/load", back.populations.size() == 2 && back.populations.get(0).brain.equals("simple")
+			&& back.populations.get(1).brain.equals("think_old") && back.populations.get(1).count == 150);
+		check("disabled actions survive", !back.populations.get(0).on(BotAction.SEED.ordinal()) && back.populations.get(0).on(BotAction.ATTACK.ordinal()));
+		check("plant parameters survive", back.populations.get(1).plant_config.leaf_sun_base == 42 && back.populations.get(1).plant_config.max_age == 0);
+		check("interaction survives", back.interaction.eat[0][1] == 0.25 && back.interaction.exchange[1][0] == 1.5);
+		WorldBio w = new WorldBio(false);
+		back.apply(w);
+		int bots = 0, plants = 0;
+		for (IBot o : w.objects) {
+			if (o.population() == w.populations.get(0)) {
+				bots++;
+			}else if (o.population() == w.populations.get(1)) {
+				plants++;
+			}
+		}
+		check("world is created from settings (" + bots + " bots, " + plants + " plants)", bots == 200 && plants == 150);
+		check("interaction table is active", Interaction.current.eat[0][1] == 0.25);
+		for (int i = 0; i < 100; i++) {
+			w.step();
+		}
+		check("this world runs, balance holds", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		Interaction.current = new Interaction(0);
+		Presets.seed = -1;
+	}
+	//
+	private static void neuro() {
+		System.out.println("neuro:");
+		Presets.seed = 21;
+		Constant.bot_brain = Brains.NEURO;
+		WorldBio w = new WorldBio(false);
+		for (int i = 0; i < 300; i++) {
+			w.step();
+		}
+		check("world of neuro bots lives (" + w.b_count + " bots)", w.b_count > 0);
+		check("energy balance holds with neuro bots", Math.abs(Ledger.total_diff) < 1e-9 * Math.max(1, Ledger.total));
+		//наследование сети
+		Bot parent = null;
+		for (IBot o : w.objects) {
+			if (o instanceof Bot b && b.state == 0) {
+				parent = b;
+				break;
+			}
+		}
+		sct.neuro.NeuroBrain<Bot> nb = (sct.neuro.NeuroBrain<Bot>) parent.brain;
+		double saved_chance = nb.c.mutation_chance;
+		nb.c.mutation_chance = 0;
+		sct.neuro.NeuroBrain<Bot> same = (sct.neuro.NeuroBrain<Bot>) nb.child(parent);
+		nb.c.mutation_chance = 1;
+		nb.c.mutation_rate = 1;
+		sct.neuro.NeuroBrain<Bot> mutated = (sct.neuro.NeuroBrain<Bot>) nb.child(parent);
+		nb.c.mutation_chance = saved_chance;
+		nb.c.mutation_rate = 0.05;
+		check("child without mutation has the same network", nb.net.distance(same.net) == 0 && same.net != nb.net);
+		check("mutated child network differs", nb.net.distance(mutated.net) > 0);
+		//только включенные действия: оставить один фотосинтез
+		Constant.bot_actions_off = "turn,set_dir,random_dir,move,recycle,attack,give,share,divide,seed,chain_divide,chain_link,queen_call,queen_become,queen_order";
+		w = new WorldBio(false);
+		int attackers = 0, eaten = 0;
+		for (int i = 0; i < 100; i++) {
+			w.step();
+			eaten += Ledger.deaths[Ledger.DIE_EATEN];
+		}
+		for (IBot o : w.objects) {
+			if (o instanceof Bot b && b.c_red == 255 && b.c_green == 0) {
+				attackers++;//go_red() после атаки — следа быть не должно
+			}
+		}
+		check("neuro bot uses only enabled actions (no attacks)", eaten == 0 && attackers == 0);
+		Constant.bot_actions_off = "";
+		//смешанный мир нейро-ботов и нейро-растений: сохранение версии 3
+		Constant.starting_plant_count = 200;
+		Constant.plant_brain = Brains.NEURO;
+		w = new WorldBio(false);
+		for (int i = 0; i < 40; i++) {
+			w.step();
+		}
+		try {
+			File f = File.createTempFile("oxygen_selftest", ".oxw");
+			f.deleteOnExit();
+			WorldIO.save(w, f);
+			long saved = state_hash(w);
+			for (int i = 0; i < 40; i++) {
+				w.step();
+			}
+			long continued = state_hash(w);
+			WorldIO.load(w, f);
+			check("neuro world: loaded state equals saved", state_hash(w) == saved);
+			for (int i = 0; i < 40; i++) {
+				w.step();
+			}
+			check("neuro world: continues the same way after load (weights saved)", state_hash(w) == continued);
+		}catch (java.io.IOException e) {
+			check("neuro world save/load: " + e, false);
+		}
+		//настройки сети в файле настроек
+		WorldSettings ws = WorldSettings.capture();
+		ws.populations.get(0).neuro_config().hidden = "24,8";
+		ws.populations.get(0).neuro_config().choice = "softmax";
+		try {
+			File f = File.createTempFile("oxygen_selftest", ".properties");
+			f.deleteOnExit();
+			ws.save(f);
+			WorldSettings back = WorldSettings.load(f);
+			check("network settings survive save/load", back.populations.get(0).neuro_config().hidden.equals("24,8")
+				&& back.populations.get(0).neuro_config().choice.equals("softmax"));
+		}catch (java.io.IOException e) {
+			check("network settings save/load: " + e, false);
+		}
+		Constant.bot_brain = "genome";
+		Constant.plant_brain = "";
+		Constant.starting_plant_count = 0;
+		Presets.seed = -1;
+	}
+	//
+	private static void leaves_use_co2() {
+		System.out.println("absorb_co2 action:");
+		WorldBio w = empty_world();
+		sct.plants.PlantConfig cfg = new sct.plants.PlantConfig();
+		sct.plants.PlantWorld pw = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.co2_map, w.oxygen_map, w.objects, cfg);
+		sct.plants.Plant sprout = sct.plants.Plant.seedling(pw, 10, 10, sct.plants.ThinkNew.instance);
+		w.objects.add(sprout);
+		w.Map[10][10] = sprout;
+		double co2_before = Ledger.sum(w.co2_map), ox_before = w.oxygen_map[10][10];
+		int e_before = sprout.energy;
+		Ledger.begin_step();
+		boolean ok = sct.plants.PlantAction.ABSORB_CO2.run(sprout, null);
+		check("sprout absorbs CO2 around", ok && Ledger.sum(w.co2_map) < co2_before);
+		check("and gets energy (ledger item)", sprout.energy > e_before && Ledger.in_plant_co2 == sprout.energy - e_before);
+		check("and releases oxygen", w.oxygen_map[10][10] > ox_before);
+		//без карт газов и без CO2 — «не удалось», без ошибок
+		sct.plants.PlantWorld no_gas = new sct.plants.PlantWorld(w.Map, w.org_map, w.mnr_map, w.objects, cfg);
+		sct.plants.Plant s2 = sct.plants.Plant.seedling(no_gas, 20, 20, sct.plants.ThinkNew.instance);
+		w.Map[20][20] = s2;
+		boolean no_maps = sct.plants.PlantAction.ABSORB_CO2.run(s2, null);
+		for (double[] row : w.co2_map) {
+			java.util.Arrays.fill(row, 0);
+		}
+		boolean no_co2 = sct.plants.PlantAction.ABSORB_CO2.run(sprout, null);
+		check("no gas maps or no CO2 — action fails, no crash", !no_maps && !no_co2);
+		//think_new выбирает действие только при todo_mod >= 9; галочка выключает
+		Presets.seed = 31;
+		Constant.starting_bot_count = 0;
+		Constant.starting_plant_count = 300;
+		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+		sct.plants.PlantConfig.current.todo_mod = 9;
+		WorldBio world = new WorldBio(false);
+		double gained = 0;
+		for (int i = 0; i < 200; i++) {
+			world.step();
+			gained += Ledger.in_plant_co2;
+		}
+		check("think_new with todo_mod=9 uses absorb_co2 (" + (long) gained + " energy)", gained > 0);
+		check("energy balance is exact with absorb_co2 (" + Ledger.total_diff + ")", Ledger.total_diff == 0);
+		Constant.plant_actions_off = "absorb_co2";
+		world = new WorldBio(false);
+		gained = 0;
+		for (int i = 0; i < 100; i++) {
+			world.step();
+			gained += Ledger.in_plant_co2;
+		}
+		check("disabled absorb_co2 gives nothing", gained == 0);
+		Constant.plant_actions_off = "";
+		sct.plants.PlantConfig.current = new sct.plants.PlantConfig();
+		Constant.starting_bot_count = 300;
+		Constant.starting_plant_count = 0;
 		Presets.seed = -1;
 	}
 	//
@@ -215,4 +630,112 @@ public class SelfTest {
 		check("--set changes Constant", Constant.max_age == 777);
 		Constant.max_age = saved;
 	}
+	//
+	//перезапуск при вымирании и клоны лучших
+	private static void kill_all_of(WorldBio w, Species sp) {
+		for (IBot o : w.objects) {
+			if (o.species() == sp && o.alive()) {
+				o.die(Ledger.DIE_REMOVED);//растение оставляет труп: он в мире, но не живой — вымирание его не считает
+			}
+		}
+	}
+	private static void restart_and_elite() throws Exception {
+		System.out.println("restart when extinct, elite:");
+		Presets.seed = 11;
+		Constant.restart_mode = "off";
+		WorldBio w = new WorldBio(false);
+		w.step();
+		kill_all_of(w, Species.OXYGEN_BOT);
+		w.step();
+		check("restart off: an empty world stays empty", w.restarts == 0 && w.objects.isEmpty());
+
+		Constant.restart_mode = "all";
+		Constant.elite = 1;
+		Constant.elite_size = 10;
+		Constant.elite_fields = "lifetime";
+		w = new WorldBio(false);
+		w.step();
+		java.util.List<Bot> marked = new java.util.ArrayList<Bot>();
+		for (IBot o : w.objects) {//трое долгожителей с узнаваемым геномом — должны попасть в архив
+			if (o instanceof Bot b && marked.size() < 3) {
+				b.life_steps = 1_000_000;
+				java.util.Arrays.fill(b.genom_array[0], 40 + marked.size());
+				marked.add(b);
+			}
+		}
+		long series = w.series_started;
+		kill_all_of(w, Species.OXYGEN_BOT);
+		w.step();
+		check("restart all: the world is created again (restarts " + w.restarts + ")", w.restarts == 1 && w.objects.size() == Constant.starting_bot_count);
+		check("the series start is kept over the restart", w.series_started == series);
+		int clones = 0, from_archive = 0;
+		java.util.Set<String> archive = new java.util.HashSet<String>();
+		for (IBot o : w.objects) {
+			Bot b = (Bot) o;
+			String g = java.util.Arrays.deepToString(b.genom_array);
+			archive.add(g);
+			if (b.genom_array[0][0] >= 40 && b.genom_array[0][0] <= 42 && b.genom_array[0][63] == b.genom_array[0][0]) {
+				clones++;
+			}
+		}
+		from_archive = archive.size();
+		check("new bots are exact clones of " + from_archive + " archived (elite_size 10)", from_archive <= 10);
+		check("the best by lifetime are cloned (" + clones + " of " + w.objects.size() + " = 3 of 10)", clones == 3 * Constant.starting_bot_count / 10);
+
+		java.io.File f = java.io.File.createTempFile("oxygen-restart", ".oxw");
+		WorldIO.save(w, f);
+		WorldBio w2 = new WorldBio(false);
+		WorldIO.load(w2, f);
+		f.delete();
+		check("restarts and series start survive save/load", w2.restarts == 1 && w2.series_started == series);
+
+		w.newPopulation();//кнопка Again / New world — новая серия
+		check("Again starts a new series", w.restarts == 0 && w.series_started >= series);
+
+		Constant.restart_mode = "any";
+		Constant.starting_plant_count = 200;
+		w = new WorldBio(false);
+		w.step();
+		for (IBot o : w.objects) {
+			if (o instanceof sct.plants.Plant p) {
+				java.util.Arrays.fill(p.genome, (byte) 7);
+				p.life_steps = 1_000_000;
+			}
+		}
+		kill_all_of(w, Species.PLANT);
+		w.step();
+		check("restart any: plants extinct, bots alive — restarted", w.restarts == 1);
+		boolean plant_clones = true;
+		int plants = 0;
+		for (IBot o : w.objects) {
+			if (o instanceof sct.plants.Plant p) {
+				plants++;
+				for (byte v : p.genome) {
+					plant_clones &= v == 7;
+				}
+			}
+		}
+		check("plants are cloned from the archive too (" + plants + " seedlings)", plants > 0 && plant_clones);
+
+		Constant.restart_mode = "off";
+		Constant.elite = 0;
+		Constant.elite_size = 100;
+		Constant.elite_fields = "lifetime,children";
+		Constant.starting_plant_count = 0;
+		Presets.seed = -1;
+		boolean bad = false;
+		try {
+			Presets.set("restart_mode=sometimes");
+		}catch (IllegalArgumentException e) {
+			bad = true;
+		}
+		boolean bad_field = false;
+		try {
+			Presets.set("elite_fields=lifetime,beauty");
+		}catch (IllegalArgumentException e) {
+			bad_field = true;
+		}
+		check("wrong restart_mode / elite field is an error", bad && bad_field);
+	}
+
 }

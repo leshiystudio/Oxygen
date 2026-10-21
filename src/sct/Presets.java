@@ -27,7 +27,15 @@ public class Presets {
 	public static long seed = -1;//меньше нуля — случайное
 	public static String preset = "default";
 	//
-	public static void apply_args(String[] args) {
+	public static void apply_args(String[] args) {//ошибка в аргументах — сообщение и выход
+		try {
+			apply_args_or_throw(args);
+		}catch (IllegalArgumentException e) {
+			System.err.println("Ошибка: " + e.getMessage());
+			System.exit(2);
+		}
+	}
+	private static void apply_args_or_throw(String[] args) {
 		List<String> sets = new ArrayList<String>();
 		for (int i = 0; i < args.length; i++) {
 			String a = args[i];
@@ -62,6 +70,8 @@ public class Presets {
 		Bot.rand.setSeed(seed);
 		WorldUtils.rand.setSeed(seed + 1);
 		w.rand.setSeed(seed + 2);
+		sct.plants.PlantWorld.rand.setSeed(seed + 3);
+		sct.neuro.NeuroBrain.rand.setSeed(seed + 4);
 	}
 	//
 	public static void set(String assignment) {//имя=значение для public static поля Constant
@@ -71,6 +81,40 @@ public class Presets {
 		}
 		String name = assignment.substring(0, eq).trim();
 		String value = assignment.substring(eq + 1).trim();
+		if (name.equals("plant_preset")) {//набор растений biosim: config, original, noleak, balanced (до plant.<имя>)
+			try {
+				sct.plants.PlantConfig.current = sct.plants.PlantConfig.preset(value);
+			}catch (IllegalArgumentException e) {
+				fail(e.getMessage());
+			}
+			return;
+		}
+		if (name.startsWith("neuro.")) {//параметр нейросети популяций по умолчанию: neuro.<имя поля NeuroConfig>
+			try {
+				sct.neuro.NeuroConfig.current.set(name.substring(6), value);
+			}catch (IllegalArgumentException e) {
+				fail(e.getMessage());
+			}
+			return;
+		}
+		if (name.startsWith("plant.")) {//параметр растений: plant.<имя поля PlantConfig>
+			try {
+				sct.plants.PlantConfig.current.set(name.substring(6), value);
+			}catch (IllegalArgumentException e) {
+				fail(e.getMessage());
+			}
+			return;
+		}
+		if (name.equals("restart_mode") && !java.util.Set.of("off", "all", "any").contains(value)) {
+			fail("restart_mode: off, all или any, получено " + value);
+		}
+		if (name.equals("elite_fields")) {
+			try {
+				Elite.check_fields(value);
+			}catch (IllegalArgumentException e) {
+				fail(e.getMessage());
+			}
+		}
 		try {
 			Field f = Constant.class.getField(name);
 			if (!Modifier.isStatic(f.getModifiers())) {
@@ -81,6 +125,8 @@ public class Presets {
 				f.setInt(null, Integer.parseInt(value));
 			}else if (t == double.class) {
 				f.setDouble(null, Double.parseDouble(value));
+			}else if (t == String.class) {
+				f.set(null, value);
 			}else if (t == int[].class) {
 				String[] parts = value.split(",");
 				int[] arr = new int[parts.length];
@@ -133,9 +179,8 @@ public class Presets {
 		}
 		return args[i];
 	}
-	private static void fail(String msg) {
-		System.err.println("Ошибка: " + msg);
-		System.exit(2);
+	private static void fail(String msg) {//в аргументах командной строки — выход (apply_args), в диалоге — сообщение
+		throw new IllegalArgumentException(msg);
 	}
 	private static void help() {
 		System.out.println("Аргументы: --preset <" + String.join("|", PRESETS.keySet()) + ">, --set имя=значение, --seed N, --w N, --h N, --bots N, --theme dark|light");

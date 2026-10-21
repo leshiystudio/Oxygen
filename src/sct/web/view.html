@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oxygen</title>
+<style>
+:root {
+	--bg: #14171c; --panel: #1c2027; --line: #2c323c; --text: #d8dde4; --muted: #8a93a0; --accent: #5fb3ff; --warn: #e0a040;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+body { display: flex; flex-direction: column; }
+header { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header b { font-size: 15px; }
+.chip { color: var(--muted); white-space: nowrap; }
+.chip span { color: var(--text); font-variant-numeric: tabular-nums; }
+.paused { color: var(--warn); }
+main { flex: 1; display: flex; min-height: 0; }
+#stage { flex: 1; position: relative; overflow: hidden; cursor: grab; background: #000; }
+#stage.drag { cursor: grabbing; }
+#world { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+#hint { position: absolute; right: 8px; bottom: 6px; padding: 2px 6px; border-radius: 3px; background: rgba(20, 23, 28, .75); color: var(--muted); font-size: 11px; pointer-events: none; }
+aside { width: 290px; overflow-y: auto; padding: 10px 12px; border-left: 1px solid var(--line); background: var(--panel); }
+h3 { margin: 12px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
+select, button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 2px 0; font-variant-numeric: tabular-nums; }
+td.n { text-align: right; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+canvas#chart { width: 100%; height: 160px; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
+#legend { font-size: 11px; color: var(--muted); margin-top: 4px; }
+#legend span { margin-right: 8px; white-space: nowrap; }
+main { position: relative; }
+input.xy { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; }
+#brain { position: absolute; left: 8px; top: 8px; max-width: calc(100% - 306px); max-height: calc(100% - 16px); display: flex; flex-direction: column;
+	background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, .5); z-index: 5; }
+#brain[hidden] { display: none; }
+#brain .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+#brain .bar b { flex: 1; min-width: 160px; }
+#brain .meta { padding: 4px 8px; color: var(--muted); font-size: 12px; }
+#brain .body { overflow: auto; padding: 6px 8px; }
+#brain .hover { padding: 4px 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; min-height: 2.6em; }
+.gen { display: inline-grid; gap: 2px; margin: 0 14px 10px 0; vertical-align: top; }
+.gen .t { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+.gc { width: 30px; height: 26px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; border-radius: 2px; }
+.gc.on { outline: 2px solid #fff; outline-offset: -2px; }
+table.pg { border-collapse: separate; border-spacing: 1px; width: auto; }
+table.pg td, table.pg th { width: 24px; height: 17px; padding: 0; text-align: center; font-size: 10px; color: #fff; border-radius: 1px; }
+table.pg th { color: var(--muted); font-weight: 400; }
+table.pg tr.on td { box-shadow: inset 0 0 0 1px #fff; }
+table.pg td.on { outline: 2px solid #fff; outline-offset: -2px; }
+.leg span { display: inline-flex; align-items: center; margin: 0 10px 4px 0; font-size: 12px; color: var(--muted); }
+@media (max-width: 760px) {
+	#brain { max-width: calc(100% - 16px); max-height: 70vh; }
+	main { flex-direction: column; }
+	#stage { min-height: 55vh; }
+	aside { width: auto; border-left: 0; border-top: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<header>
+	<b>Oxygen</b>
+	<span class="chip" id="s_since">started <span id="s_started">–</span> · running <span id="s_run">–</span></span>
+	<span class="chip" id="s_restarts" hidden title="перезапусков при вымирании в этой серии; после — время текущей попытки">restarts <span id="s_rn">0</span> · this try <span id="s_try">–</span></span>
+	<span class="chip">step <span id="s_steps">–</span></span>
+	<span class="chip">bots <span id="s_bots">–</span></span>
+	<span class="chip">plants <span id="s_plants">–</span></span>
+	<span class="chip">speed <span id="s_sps">–</span> steps/s</span>
+	<span class="chip"><span id="s_ms">–</span> ms/step</span>
+	<span class="chip" id="s_state"></span>
+</header>
+<main>
+	<div id="stage"><canvas id="world"></canvas><div id="hint">колесо — масштаб, перетаскивание — сдвиг, двойной щелчок — вписать</div></div>
+	<div id="brain" hidden>
+		<div class="bar"><b id="brain_title"></b>
+			<button id="brain_copy" title="JSON в буфер обмена">Copy</button>
+			<button id="brain_save" title="JSON в файл">Save .json</button>
+			<button id="brain_close" title="закрыть">✕</button></div>
+		<div class="meta" id="brain_meta"></div>
+		<div class="body" id="brain_body"></div>
+		<div class="hover" id="brain_hover">наведите на ячейку — расшифровка</div>
+	</div>
+	<aside>
+		<h3>Picture</h3>
+		<label>bots <select id="mode"></select></label>
+		<label>background <select id="bg"></select></label>
+		<label>cell, px <select id="scale" title="при 1 и 2 px картинка одна и та же — сервер шлет 1 px, браузер растягивает"><option value="1" selected>1–2</option><option value="3">3</option><option value="5">5</option></select></label>
+		<label title="частоту кадров задает сервер — одну для всех зрителей">frame <span id="frame_info" style="color:var(--muted);font-variant-numeric:tabular-nums">–</span></label>
+		<label>show bots <input type="checkbox" id="bots" checked></label>
+		<label title="мир замкнут: края сшиты, как в окне программы">closed world (tiles) <input type="checkbox" id="wrap" checked></label>
+		<h3>Brain of a creature</h3>
+		<div style="color:var(--muted);font-size:12px">щелчок по миру — выбрать клетку</div>
+		<label>cell <span><input class="xy" id="bx" type="number" placeholder="x"> <input class="xy" id="by" type="number" placeholder="y"></span></label>
+		<label><button id="b_brain" style="flex:1">Get brain</button></label>
+		<div id="brain_wait" style="color:var(--muted);font-size:12px;min-height:1.4em"></div>
+		<h3>Populations</h3>
+		<table id="pops"></table>
+		<h3>World</h3>
+		<table id="world_info"></table>
+		<h3>Graph</h3>
+		<label><select id="group" style="flex:1"></select></label>
+		<canvas id="chart"></canvas>
+		<div id="legend"></div>
+		<p><a href="/api/history.csv" style="color:var(--accent)">history → CSV</a></p>
+	</aside>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const store = {
+	get(k, d) { try { const v = localStorage.getItem("oxygen." + k); return v === null ? d : v; } catch (e) { return d; } },
+	set(k, v) { try { localStorage.setItem("oxygen." + k, v); } catch (e) {} }
+};
+const fmt = v => v == null ? "–" : Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M" : Math.abs(v) >= 1e4 ? (v / 1e3).toFixed(1) + "k" : Number.isInteger(v) ? String(v) : v.toFixed(2);
+let status = null, fitted = false;
+
+// ---- кадр мира: следующий запрашивается только после загрузки предыдущего
+//кадр — вне страницы; на холсте он повторяется плиткой, как тайлы в окне программы (мир замкнут)
+const img = new Image(), stage = $("stage"), canvas = $("world"), ctx = canvas.getContext("2d");
+let view = { x: 0, y: 0, k: 1 };
+let draw_pending = false;
+function apply_view() {
+	if (!draw_pending) { draw_pending = true; requestAnimationFrame(draw); }
+}
+function draw() {
+	draw_pending = false;
+	const dpr = window.devicePixelRatio || 1, W = stage.clientWidth, H = stage.clientHeight;
+	if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+		canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+	}
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	ctx.imageSmoothingEnabled = view.k < 1;//крупно — четкие клетки, мелко — без ряби
+	ctx.clearRect(0, 0, W, H);
+	if (!img.naturalWidth) return;
+	const tw = img.naturalWidth * view.k, th = img.naturalHeight * view.k;
+	if (!$("wrap").checked) {
+		ctx.drawImage(img, view.x, view.y, tw, th);
+		mark(view.x, view.y, tw);
+		return;
+	}
+	//первая плитка левее/выше края; границы округляются — без щелей между плитками
+	const x0 = ((view.x % tw) + tw) % tw - tw, y0 = ((view.y % th) + th) % th - th;
+	const nx = Math.ceil((W - x0) / tw), ny = Math.ceil((H - y0) / th);
+	if (nx * ny > 2500) return;//сильно отдалили — плиток слишком много
+	for (let i = 0; i < nx; i++) {
+		const xa = Math.round(x0 + i * tw), xb = Math.round(x0 + (i + 1) * tw);
+		for (let j = 0; j < ny; j++) {
+			const ya = Math.round(y0 + j * th), yb = Math.round(y0 + (j + 1) * th);
+			ctx.drawImage(img, xa, ya, xb - xa, yb - ya);
+			mark(xa, ya, xb - xa);
+		}
+	}
+}
+let picked = null;//выбранная клетка [x, y] — рамка во всех плитках
+function mark(tx, ty, tw) {
+	if (!picked || !status) return;
+	const c = tw / status.width;//клетка мира на экране
+	const x = tx + picked[0] * c, y = ty + picked[1] * c, r = Math.max(c, 12);//мелкая клетка — рамка все равно заметна
+	ctx.strokeStyle = "#ff3b3b"; ctx.lineWidth = 2;
+	ctx.strokeRect(x + c / 2 - r / 2 - 2, y + c / 2 - r / 2 - 2, r + 4, r + 4);
+}
+function fit() {
+	if (!img.naturalWidth) return;
+	const k = Math.min(stage.clientWidth / img.naturalWidth, stage.clientHeight / img.naturalHeight);
+	view = { k, x: (stage.clientWidth - img.naturalWidth * k) / 2, y: (stage.clientHeight - img.naturalHeight * k) / 2 };
+	apply_view();
+}
+//кадры — по часам сервера. Основной путь — поток (/stream): сервер сам присылает новый кадр слоя в начале
+//каждого отрезка, без опроса. Запасной — опрос (/frame.png: X-Next-Frame, ETag -> 304), если поток недоступен:
+//лимит потоков, прокси копит ответ. Частоту зритель не выбирает.
+let frame_gen = 0, frame_timer = null, retry_timer = null, frame_etag = null, frame_key = "", stream_ctl = null, stream_fails = 0;
+function layer_query() {
+	return `mode=${$("mode").value || 0}&bg=${$("bg").value || 0}&scale=${$("scale").value}&bots=${$("bots").checked ? 1 : 0}`;
+}
+function show_info(step, time, period, how) {
+	$("frame_info").textContent = `step ${step} · ${new Date(time).toLocaleTimeString()} · every ${(period / 1000).toFixed(period % 1000 ? 1 : 0)} s · ${how}`;
+}
+async function show_png(blob, gen) {
+	const url = URL.createObjectURL(blob);
+	if (gen !== frame_gen) { URL.revokeObjectURL(url); return; }
+	const old_w = img.naturalWidth, old = img.src;
+	await new Promise(ok => { img.onload = ok; img.onerror = ok; img.src = url; });
+	if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+	if (!fitted) { fit(); fitted = true; }
+	else if (old_w && old_w !== img.naturalWidth) { view.k *= old_w / img.naturalWidth; }//другой размер клетки — та же видимая область
+	apply_view();
+}
+function stop_frames() {
+	frame_gen++;//старые поток и опрос увидят другое поколение и закончатся
+	clearTimeout(frame_timer);
+	clearTimeout(retry_timer);
+	if (stream_ctl) { stream_ctl.abort(); stream_ctl = null; }
+}
+function start_frames() {//смена слоя, вкладка снова видна, обрыв потока
+	stop_frames();
+	if (document.hidden) return;//скрытая вкладка ничего не получает
+	const gen = frame_gen;
+	if (stream_fails < 2) {
+		start_stream(gen);
+	} else {
+		load_frame(gen);
+		retry_timer = setTimeout(() => { stream_fails = 0; if (gen === frame_gen) start_frames(); }, 60000);//через минуту — снова попробовать поток
+	}
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) stop_frames(); else start_frames(); });
+
+//---- поток: multipart/x-mixed-replace, части разбираются руками — так видны шаг и время каждого кадра
+function find(buf, seq, from) {
+	outer: for (let i = from; i <= buf.length - seq.length; i++) {
+		for (let k = 0; k < seq.length; k++) if (buf[i + k] !== seq[k]) continue outer;
+		return i;
+	}
+	return -1;
+}
+const CRLF2 = [13, 10, 13, 10];
+async function start_stream(gen) {
+	const ctl = new AbortController();
+	stream_ctl = ctl;
+	let got = false;
+	const watchdog = setTimeout(() => { if (!got) ctl.abort(); }, 8000);//кадра нет 8 с — прокси копит поток, лучше опрос
+	try {
+		const r = await fetch(location.origin + "/stream?" + layer_query(), { cache: "no-store", signal: ctl.signal });
+		if (!r.ok || !r.body) throw new Error(r.status);
+		const reader = r.body.getReader();
+		let buf = new Uint8Array(0);
+		for (;;) {
+			for (;;) {//все целые части, что уже пришли
+				const he = find(buf, CRLF2, 0);
+				if (he < 0) break;
+				const head = new TextDecoder().decode(buf.subarray(0, he));
+				const h = {};
+				for (const line of head.split("\r\n")) { const c = line.indexOf(":"); if (c > 0) h[line.slice(0, c).trim().toLowerCase()] = line.slice(c + 1).trim(); }
+				const len = parseInt(h["content-length"] || "-1");
+				if (len < 0) throw new Error("bad part");
+				if (buf.length < he + 4 + len) break;//тело еще не дошло
+				const body = buf.slice(he + 4, he + 4 + len);
+				buf = buf.slice(Math.min(buf.length, he + 4 + len + 2));//+ \r\n после тела
+				got = true;
+				stream_fails = 0;
+				await show_png(new Blob([body], { type: "image/png" }), gen);
+				show_info(h["x-frame-step"], parseInt(h["x-frame-time"] || "0"), parseInt(h["x-frame-period"] || "0"), "stream");
+			}
+			const { value, done } = await reader.read();
+			if (done) break;
+			const nb = new Uint8Array(buf.length + value.length);
+			nb.set(buf); nb.set(value, buf.length);
+			buf = nb;
+		}
+	} catch (e) {}
+	clearTimeout(watchdog);
+	if (gen !== frame_gen) return;//сменили слой или скрыли вкладку — новый старт уже идет
+	if (!got) stream_fails++;
+	frame_timer = setTimeout(start_frames, got ? 300 : 1000);//поток закрылся (новый мир) — переподключиться; не открылся — еще раз или опрос
+}
+
+//---- опрос — запасной путь
+async function load_frame(gen) {
+	if (gen !== frame_gen || document.hidden) return;
+	const url_now = location.origin + "/frame.png?" + layer_query();
+	if (url_now !== frame_key) { frame_key = url_now; frame_etag = null; }//другой слой — нужен его кадр целиком
+	let next = 1000;
+	try {
+		const r = await fetch(url_now, { cache: "no-store", headers: frame_etag ? { "If-None-Match": frame_etag } : {} });
+		if (r.status !== 200 && r.status !== 304) throw new Error(r.status);
+		next = parseInt(r.headers.get("X-Next-Frame") || "1000");
+		show_info(r.headers.get("X-Frame-Step"), parseInt(r.headers.get("X-Frame-Time") || "0"), parseInt(r.headers.get("X-Frame-Period") || "0"), "polling");
+		if (r.status === 200) {
+			frame_etag = r.headers.get("ETag");
+			await show_png(await r.blob(), gen);
+		}
+	} catch (e) {
+		next = 3000;
+	}
+	//чуть позже начала отрезка и вразброс — зрители не приходят все в одну миллисекунду
+	if (gen === frame_gen) frame_timer = setTimeout(() => load_frame(gen), next + 30 + Math.random() * 120);
+}
+
+stage.addEventListener("wheel", e => {
+	e.preventDefault();
+	const r = stage.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+	const f = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+	const k = Math.max(0.02, Math.min(64, view.k * f));
+	view.x = mx - (mx - view.x) * k / view.k; view.y = my - (my - view.y) * k / view.k; view.k = k;
+	apply_view();
+}, { passive: false });
+let drag = null;
+stage.addEventListener("pointerdown", e => { drag = { x: e.clientX - view.x, y: e.clientY - view.y, sx: e.clientX, sy: e.clientY }; stage.classList.add("drag"); stage.setPointerCapture(e.pointerId); });
+stage.addEventListener("pointermove", e => { if (drag) { view.x = e.clientX - drag.x; view.y = e.clientY - drag.y; apply_view(); } });
+stage.addEventListener("pointerup", e => {
+	const click = drag && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4;//не сдвинули — это выбор клетки
+	drag = null; stage.classList.remove("drag");
+	if (click) pick_cell(e);
+});
+stage.addEventListener("dblclick", fit);
+window.addEventListener("resize", apply_view);
+
+for (const id of ["mode", "bg", "scale"]) {
+	$(id).addEventListener("change", () => { store.set(id, $(id).value); start_frames(); });
+}
+$("bots").addEventListener("change", () => { store.set("bots", $("bots").checked ? "1" : "0"); start_frames(); });
+$("scale").value = ["1", "3", "5"].includes(store.get("scale", "1")) ? store.get("scale", "1") : "1";//было 2 — теперь то же, что 1
+$("bots").checked = store.get("bots", "1") === "1";
+$("wrap").checked = store.get("wrap", "1") === "1";
+$("wrap").addEventListener("change", () => { store.set("wrap", $("wrap").checked ? "1" : "0"); apply_view(); });
+
+// ---- статус
+//реальное время мира: с какого момента идет и сколько прошло (по часам сервера — часы зрителя не важны)
+//запуск — 2026-10-20 17:39:13; прошло — 1 y 2 mo 03 d 04:05:06 (месяцы — по календарю, годы — когда наберутся)
+function since(s) {
+	const p = n => String(n).padStart(2, "0");
+	const start = new Date(s.started), end = new Date(Math.max(s.now, s.started));
+	const when = `${start.getFullYear()}-${p(start.getMonth() + 1)}-${p(start.getDate())} ${p(start.getHours())}:${p(start.getMinutes())}:${p(start.getSeconds())}`;
+	const add_months = (d, m) => {//31 января + 1 месяц = 28/29 февраля, а не 3 марта
+		const r = new Date(d);
+		r.setDate(1);
+		r.setMonth(r.getMonth() + m);
+		r.setDate(Math.min(d.getDate(), new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate()));
+		return r;
+	};
+	let months = (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
+	if (add_months(start, months) > end) months--;
+	let t = Math.floor((end - add_months(start, months)) / 1000);
+	const days = Math.floor(t / 86400); t %= 86400;
+	const years = Math.floor(months / 12);
+	const run = (years ? years + " y " : "") + (months % 12) + " mo " + p(days) + " d " + p(Math.floor(t / 3600)) + ":" + p(Math.floor(t / 60) % 60) + ":" + p(t % 60);
+	return { when, run, full: start.toString() };
+}
+function fill_select(sel, names, key) {
+	if (sel.options.length) return;
+	names.forEach((n, i) => sel.add(new Option(n, i)));
+	sel.value = store.get(key, "0");
+}
+async function load_status() {
+	try {
+		const r = await fetch(location.origin + "/api/status", { cache: "no-store" });
+		status = await r.json();
+	} catch (e) { $("s_state").textContent = "нет связи"; $("s_state").className = "chip paused"; return; }
+	const s = status;
+	fill_select($("mode"), s.draw_types, "mode");
+	fill_select($("bg"), s.backgrounds, "bg");
+	const t = since(s);
+	$("s_started").textContent = t.when; $("s_run").textContent = t.run;
+	$("s_since").title = "серия начата " + t.full;
+	$("s_restarts").hidden = s.restart_mode === "off" && !s.restarts;
+	$("s_rn").textContent = s.restarts;
+	$("s_try").textContent = since({ started: s.attempt_started, now: s.now }).run;
+	$("s_steps").textContent = s.steps;
+	$("s_bots").textContent = fmt(s.bots);
+	$("s_plants").textContent = fmt(s.plants);
+	$("s_sps").textContent = fmt(Math.round(s.steps_per_sec));
+	$("s_ms").textContent = s.ms_per_step.toFixed(2);
+	$("s_state").textContent = s.paused ? "paused" : s.speed;
+	$("s_state").className = s.paused ? "chip paused" : "chip";
+	$("pops").innerHTML = "";
+	for (const p of s.populations) {
+		const tr = $("pops").insertRow();
+		const name = tr.insertCell(), n = tr.insertCell();
+		const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = p.color;
+		name.append(sw, `${p.name} `);
+		const small = document.createElement("span"); small.style.color = "var(--muted)"; small.textContent = `${p.species.toLowerCase()}, ${p.brain}`;
+		name.append(small);
+		n.className = "n"; n.textContent = fmt(p.alive);
+	}
+	const info = [["size", `${s.width} × ${s.height}`], ["world #", s.world], ["seeds", fmt(s.seeds)], ["queens", fmt(s.queens)],
+		["corpses", fmt(s.corpses)], ["kin clans", fmt(s.clans)], ["energy", fmt(s.energy)], ["balance diff", s.balance_diff == null ? "–" : s.balance_diff.toExponential(1)]];
+	$("world_info").innerHTML = "";
+	for (const [k, v] of info) { const tr = $("world_info").insertRow(); tr.insertCell().textContent = k; const c = tr.insertCell(); c.className = "n"; c.textContent = v; }
+}
+
+// ---- график
+const palette = ["#5fb3ff", "#f07f5f", "#7fd17f", "#e0c050", "#c08fe0", "#50d0c8", "#e080b0", "#a0a0a0"];
+async function load_history() {
+	const sel = $("group");
+	let h;
+	try {
+		const r = await fetch(location.origin + `/api/history?n=400&group=${encodeURIComponent(sel.value || store.get("group", ""))}`, { cache: "no-store" });
+		h = await r.json();
+	} catch (e) { return; }
+	if (!sel.options.length) { h.groups.forEach(g => sel.add(new Option(g, g))); sel.value = store.get("group", h.groups[0]); }
+	draw_chart(h);
+}
+$("group").addEventListener("change", () => { store.set("group", $("group").value); load_history(); });
+function draw_chart(h) {
+	const c = $("chart"), dpr = window.devicePixelRatio || 1;
+	c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
+	const g = c.getContext("2d"), W = c.width, H = c.height, pad = 4 * dpr;
+	g.clearRect(0, 0, W, H);
+	let max = 0;
+	for (const s of h.series) for (const v of s.values) if (v != null && v > max) max = v;
+	if (max <= 0) max = 1;
+	const n = h.steps.length;
+	$("legend").innerHTML = "";
+	h.series.forEach((s, i) => {
+		const color = s.color || palette[i % palette.length];
+		g.strokeStyle = color; g.lineWidth = 1.5 * dpr; g.beginPath();
+		s.values.forEach((v, j) => {
+			const x = pad + (n < 2 ? 0 : j / (n - 1)) * (W - 2 * pad), y = H - pad - (v || 0) / max * (H - 2 * pad);
+			j ? g.lineTo(x, y) : g.moveTo(x, y);
+		});
+		g.stroke();
+		const l = document.createElement("span");
+		l.innerHTML = `<span class="sw" style="background:${color}"></span>`;
+		l.append(`${s.name} ${fmt(s.values[s.values.length - 1])}`);
+		$("legend").append(l);
+	});
+	g.fillStyle = "#8a93a0"; g.font = `${10 * dpr}px system-ui`; g.fillText(fmt(max), pad + 2, pad + 10 * dpr);
+	if (n) { g.textAlign = "right"; g.fillText("step " + h.steps[n - 1], W - pad - 2, H - pad - 2); }
+}
+
+// ---- мозг существа: единоразовый снимок по координатам; частоту ограничивает сервер
+function pick_cell(e) {
+	if (!img.naturalWidth || !status) return;
+	const r = stage.getBoundingClientRect();
+	const c = img.naturalWidth / status.width;//пикселей кадра на клетку
+	let x = Math.floor(((e.clientX - r.left - view.x) / view.k) / c), y = Math.floor(((e.clientY - r.top - view.y) / view.k) / c);
+	if (!$("wrap").checked && (x < 0 || y < 0 || x >= status.width || y >= status.height)) return;
+	x = ((x % status.width) + status.width) % status.width; y = ((y % status.height) + status.height) % status.height;
+	$("bx").value = x; $("by").value = y;
+	picked = [x, y]; apply_view();
+}
+for (const id of ["bx", "by"]) $(id).addEventListener("input", () => {
+	const x = parseInt($("bx").value), y = parseInt($("by").value);
+	picked = isNaN(x) || isNaN(y) ? null : [x, y]; apply_view();
+});
+let brain_data = null, wait_until = 0, wait_timer = null;
+function cooldown(sec) {
+	wait_until = Date.now() + sec * 1000;
+	clearInterval(wait_timer);
+	const tick = () => {
+		const left = Math.ceil((wait_until - Date.now()) / 1000);
+		$("b_brain").disabled = left > 0;
+		$("brain_wait").textContent = left > 0 ? `следующий запрос — через ${left} с (ограничение сервера)` : "";
+		if (left <= 0) clearInterval(wait_timer);
+	};
+	tick();
+	wait_timer = setInterval(tick, 250);
+}
+$("b_brain").addEventListener("click", async () => {
+	const x = parseInt($("bx").value), y = parseInt($("by").value);
+	if (isNaN(x) || isNaN(y)) { $("brain_wait").textContent = "укажите клетку: щелчок по миру или x, y"; return; }
+	$("b_brain").disabled = true;
+	try {
+		const r = await fetch(location.origin + `/api/brain?x=${x}&y=${y}`, { cache: "no-store" });
+		const j = await r.json();
+		if (r.status === 429) { cooldown(j.retry_after || 1); return; }
+		if (!r.ok) throw new Error(j.error || r.status);
+		const limit = parseInt(r.headers.get("X-Brain-Limit") || "0");
+		if (j.mode !== "none" && limit > 0) cooldown(limit); else $("b_brain").disabled = false;
+		brain_data = j;
+		show_brain(j);
+	} catch (e) {
+		$("b_brain").disabled = false;
+		$("brain_wait").textContent = "не удалось: " + e.message;
+	}
+});
+$("brain_close").addEventListener("click", () => { $("brain").hidden = true; });
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function stamp(t) { const d = new Date(t), p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+function hover_on(node, text) { node.addEventListener("mouseenter", () => { $("brain_hover").textContent = text; }); node.title = text; }
+//снимок не меняется, пока не запросят снова: рисуется один раз по типу мозга (как окно генома в программе)
+function show_brain(j) {
+	const body = $("brain_body");
+	body.innerHTML = "";
+	$("brain").hidden = false;
+	$("brain_hover").textContent = "наведите на ячейку — расшифровка";
+	const kinds = { bot_genome: "genome of commands", plant_new: "genome 32 genes x 23 commands (think_new)", plant_old: "linear genome (think_old)", neuro: "neural network" };
+	$("brain_title").textContent = j.mode === "none" ? `[${j.x}, ${j.y}] — пусто` : `${j.title} — ${kinds[j.mode] || j.mode}`;
+	$("brain_meta").textContent = `снимок: step ${j.step} · ${stamp(j.time)}` + (j.describe ? " · " + j.describe : "") + (j.note ? " · " + j.note : "");
+	if (j.mode === "bot_genome") {
+		j.genomes.forEach((g, gi) => {
+			const box = el("div", "gen");
+			box.style.gridTemplateColumns = `repeat(${j.cols}, 30px)`;
+			box.append(el("div", "t", "genome " + gi + (gi === j.active ? "  (active)" : "")));
+			g.forEach(([v, color, ti], i) => {
+				const c = el("div", "gc" + (gi === j.active && i === j.index ? " on" : ""), String(v));
+				c.style.background = color;
+				hover_on(c, `genome ${gi} [${i}] = ${v}: ${j.texts[ti]}`);
+				box.append(c);
+			});
+			body.append(box);
+		});
+		const leg = el("div", "leg");
+		for (const [name, color] of j.legend) { const s = el("span"); const sw = el("span", "sw"); sw.style.background = color; s.append(sw, name); leg.append(s); }
+		body.append(leg);
+	} else if (j.mode === "plant_new" || j.mode === "plant_old") {
+		const t = el("table", "pg");
+		const head = t.insertRow(); head.append(el("th"));
+		for (let c = 0; c < j.cols; c++) head.append(el("th", "", String(c)));
+		for (let r = 0; r < j.rows; r++) {
+			const tr = t.insertRow();
+			if (j.mode === "plant_new" && r === j.active) tr.className = "on";
+			tr.append(el("th", "", String(r)));
+			for (let c = 0; c < j.cols; c++) {
+				const idx = r * j.cols + c, cell = j.cells[idx];
+				const td = el("td");
+				tr.append(td);
+				if (!cell) continue;
+				const [v, color, ti] = cell;
+				td.textContent = v; td.style.background = color;
+				if (j.mode === "plant_old" && idx === j.active) td.className = "on";
+				hover_on(td, (j.mode === "plant_new" ? `gene ${r}, command ${c} = ${v}: ` : `command ${idx} = ${v}: `) + j.texts[ti]);
+			}
+		}
+		body.append(t);
+	} else if (j.mode === "neuro") {
+		let k = 0;
+		for (let l = 1; l < j.sizes.length; l++) {
+			const n_in = j.sizes[l - 1], n_out = j.sizes[l], cols = n_in + 1;
+			const cell = Math.max(3, Math.min(14, Math.floor(840 / cols)));
+			body.append(el("div", "", `layer ${l}: ${n_in} inputs + bias -> ${n_out} ${l === j.sizes.length - 1 ? "outputs" : "neurons"}` + (l === 1 ? `  (layers ${j.sizes.join(", ")}; ${j.note})` : "")));
+			const cv = el("canvas");
+			cv.width = cols * cell; cv.height = n_out * cell; cv.style.display = "block"; cv.style.margin = "2px 0 10px";
+			const g = cv.getContext("2d"), base = k, gap = cell > 4 ? 1 : 0;
+			for (let o = 0; o < n_out; o++) for (let i = 0; i < cols; i++) {
+				const v = j.weights[base + o * cols + i], t = Math.min(1, Math.abs(v) / 2), hi = 40 + Math.round(215 * t);
+				g.fillStyle = v >= 0 ? `rgb(${hi},40,40)` : `rgb(40,40,${hi})`;//как в окне генома: синие отрицательные, красные положительные
+				g.fillRect(i * cell, o * cell, cell - gap, cell - gap);
+			}
+			cv.addEventListener("mousemove", e => {
+				const r = cv.getBoundingClientRect(), i = Math.floor((e.clientX - r.left) / cell), o = Math.floor((e.clientY - r.top) / cell);
+				if (i < 0 || o < 0 || i >= cols || o >= n_out) return;
+				const from = i === n_in ? "bias" : l === 1 ? j.in_names[i] : `neuron ${l - 1}.${i}`;
+				const to = l === j.sizes.length - 1 ? j.out_names[o] : `neuron ${l}.${o}`;
+				$("brain_hover").textContent = `layer ${l}: ${from} -> ${to}, weight ${j.weights[base + o * cols + i].toFixed(3)}`;
+			});
+			body.append(cv);
+			k += n_out * cols;
+		}
+	} else if (j.mode === "none") {
+		body.append(el("p", "", "в этой клетке никого нет — запрос не засчитан"));
+	} else {
+		body.append(el("p", "", "у этого существа нет генома для показа"));
+	}
+}
+// ---- копировать и сохранить: снимок как есть, JSON
+const brain_file = () => `brain_${brain_data.x}_${brain_data.y}_step${brain_data.step}.json`;
+$("brain_save").addEventListener("click", () => {
+	if (!brain_data) return;
+	const a = document.createElement("a");
+	a.href = URL.createObjectURL(new Blob([JSON.stringify(brain_data, null, 1)], { type: "application/json" }));
+	a.download = brain_file();
+	a.click();
+	setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$("brain_copy").addEventListener("click", async () => {
+	if (!brain_data) return;
+	const text = JSON.stringify(brain_data, null, 1);
+	try {
+		await navigator.clipboard.writeText(text);//только https или localhost
+	} catch (e) {
+		const ta = document.createElement("textarea");//http на сервере — старый способ
+		ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+		document.body.append(ta); ta.select();
+		document.execCommand("copy");
+		ta.remove();
+	}
+	$("brain_hover").textContent = "скопировано в буфер обмена (" + Math.round(text.length / 1024) + " КБ)";
+});
+
+load_status().then(() => {
+	start_frames();
+	const m = location.hash.match(/brain=(\d+),(\d+)/);//ссылка на клетку: #brain=10,10 — сразу запросить ее мозг
+	if (m) { $("bx").value = m[1]; $("by").value = m[2]; picked = [+m[1], +m[2]]; $("b_brain").click(); }
+});
+load_history();
+setInterval(() => { if (!document.hidden) load_status(); }, 1000);
+setInterval(() => { if (!document.hidden) load_history(); }, 3000);
+</script>
+</body>
+</html>

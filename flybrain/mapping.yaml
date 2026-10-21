@@ -1,0 +1,160 @@
+# Привязка мозга мухи к телу бота Oxygen — единственное место, где она задается.
+#
+#   groups  — группы нейронов мозга мухи (по аннотациям FlyWire v783)
+#   sensors — датчик бота -> частота входа на группы
+#   actions — частота группы -> голос за действие бота
+#
+# Имена датчиков и действий — те же, что у нейро-бота (sct.neuro.BotBody, sct.BotAction).
+# Новое действие в BotAction или новый датчик в BotBody сразу доступны здесь по имени.
+# Сервис при запуске сверяет имена с тем, что прислал мир, и на опечатку отвечает списком допустимых.
+#
+# Подключено по смыслу. Пометки: [проверено] — отклик модели видели в probe_io.py;
+# [не проверено] — только по смыслу; [модель иначе] — по смыслу так, но модель отвечает по-другому.
+
+tick_ms: 10      # мозгового времени на один ход бота
+smooth_ms: 40    # частоты выходных групп сглаживаются за столько мс (за 10 мс один импульс — уже 100 Гц)
+
+groups:
+  # Селектор — поля аннотаций (cell_type, cell_class, cell_sub_class, super_class, side): значение
+  # или список, "PAM*" — все, что начинается с PAM; ids — явный список root_id. Условия — по «и».
+  # side — сторона тела клетки (у сенсорных — сторона входа нерва). Число — нейронов в группе.
+  #
+  # Входы
+  looming_left:  {cell_type: [LC4, LPLC2], side: left}     # 162 — детекторы надвигающегося объекта [проверено]
+  looming_right: {cell_type: [LC4, LPLC2], side: right}    # 152
+  sugar:         {cell_class: gustatory, cell_sub_class: sugar}   # 32 — сладкие рецепторы хоботка [проверено]
+  leg_taste:     {cell_class: gustatory, cell_sub_class: SA_VTV_pro_meso_meta}  # 74 — вкус лапками [не проверено]
+  bitter:        {cell_class: gustatory, cell_sub_class: bitter}  # 42 — горечь: тормозит хоботок при сахаре [проверено]
+  co2:           {cell_type: ORN_V}                         # 67 — CO2-рецепторы (Gr21a/Gr63a) [проверено]
+  food_odor:     {cell_type: ORN_DM1}                       # 68 — запах брожения [модель иначе: смена направления]
+  plant_taste:   {cell_class: gustatory, cell_sub_class: putative_attractive}  # 14 — «привлекательный» вкус -> слюна 37 Гц, хоботок 43 Гц [проверено]
+  bad_odor:      {cell_type: ORN_DA2}                       # 39 — геосмин, запах плесени [проверено]
+  fly_odor:      {cell_type: ORN_DA1}                       # 126 — феромон cVA — запах сородича [не проверено]
+  heating:       {cell_class: thermosensory, cell_sub_class: heating}       # 7 — тепло: уйти [проверено]
+  touch:         {cell_class: mechanosensory, cell_sub_class: head bristle} # 305 — касание [проверено, слабо]
+  light:         {cell_type: R1-6}                          # 7932 — яркость [модель иначе: до моторики не доходит]
+  # Выходы
+  walk:          {cell_type: DNp09}                         # 2 — ходьба вперед
+  walk_back:     {cell_type: MDN}                           # 4 — «лунная походка» назад
+  steer_left:    {cell_type: [DNa04, DNa05, DNa13], side: left}    # 4 — поворот налево (от угрозы справа) [проверено]
+  steer_right:   {cell_type: [DNa04, DNa05, DNa13], side: right}   # 4
+  odor_turn:     {cell_type: DNb05}                         # 2 — сюда сходятся все запахи, тепло, сухость [проверено]
+  escape:        {cell_type: DNp01}                         # 2 — Giant Fiber, прыжок-бегство [проверено]
+  proboscis:     {cell_type: CB0701}                        # 2 — MN9, вытягивание хоботка [проверено]
+  saliva:        {cell_type: CB0836}                        # 2 — слюнный моторный нейрон: только от plant_taste, сахар не трогает [проверено]
+  wings:         {cell_type: [DNp02, DNp04, DNp11]}         # 6 — взмах и подъем крыльев: угроза, взлет [проверено]
+  egg:           {cell_type: "oviDN*"}                      # 6 — откладка яиц (FlyWire — самка) [не проверено]
+  #
+  # --- Еще не подключены ---
+  # water:       {cell_class: gustatory, cell_sub_class: water}                 # 30 — вода (на выходы не влияет)
+  # salt:        {cell_class: gustatory, cell_sub_class: high_salt/heavy_metal} # 29 — много соли
+  # cold:        {cell_class: thermosensory, cell_sub_class: cold}             # 9 — холод
+  # dry:         {cell_class: hygrosensory, cell_sub_class: dry}               # 29 — сухость (как тепло)
+  # moist:       {cell_class: hygrosensory, cell_sub_class: moist}             # 16 — влажность
+  # wind:        {cell_class: mechanosensory, cell_sub_class: wind_gravity}    # 481 — ветер, гравитация -> чистка
+  # groom:       {cell_type: DNg11}                         # 6 — чистка передними ногами
+  # Обучение (грибовидное тело) — для режима learn
+  # reward:      {cell_type: "PAM*"}                        # 307 — дофаминовые PAM: «хорошо»
+  # punish:      {cell_type: "PPL1*"}                       # 16 — дофаминовые PPL1: «плохо»
+  # kenyon:      {cell_class: Kenyon_Cell}                  # 5177 — клетки Кеньона: память ситуаций
+  # mbon:        {cell_class: MBON}                         # 96 — выходы грибовидного тела
+
+sensors:
+  # input — имя датчика; to — группа или список групп; rate — Гц при значении датчика 1
+  # (значение обрезается до 0..1, invert: true — берется 1 - значение;
+  #  offset — порог: вход идет только от превышения, (значение - offset) / (1 - offset))
+  #
+  # Зрение: "see forward|left|right=K" — 1, если в той клетке K. Боковые — на группу своей стороны,
+  # forward — на обе. K: 0 семечко, 1 пусто, 2 свой, 3 избыток органики, 4 чужой, 5 королева,
+  # 6 подчиненная, 7 растение, 8 бот с другим мозгом (для мухи — обычный бот)
+  #
+  # чужой и бот с другим мозгом — угроза
+  - {input: "see left=4",     to: looming_left,  rate: 200}
+  - {input: "see right=4",    to: looming_right, rate: 200}
+  - {input: "see forward=4",  to: [looming_left, looming_right], rate: 200}
+  - {input: "see left=8",     to: looming_left,  rate: 200}
+  - {input: "see right=8",    to: looming_right, rate: 200}
+  - {input: "see forward=8",  to: [looming_left, looming_right], rate: 200}
+  # семечко — летящая смерть (при столкновении убивает)
+  - {input: "see left=0",     to: looming_left,  rate: 150}
+  - {input: "see right=0",    to: looming_right, rate: 150}
+  - {input: "see forward=0",  to: [looming_left, looming_right], rate: 150}
+  # королева и подчиненная — тоже чужие боты, но опасны меньше
+  - {input: "see left=5",     to: looming_left,  rate: 80}
+  - {input: "see right=5",    to: looming_right, rate: 80}
+  - {input: "see forward=5",  to: [looming_left, looming_right], rate: 80}
+  - {input: "see left=6",     to: looming_left,  rate: 80}
+  - {input: "see right=6",    to: looming_right, rate: 80}
+  - {input: "see forward=6",  to: [looming_left, looming_right], rate: 80}
+  # избыток органики — смертельная клетка: запах гнили
+  - {input: "see left=3",     to: bad_odor, rate: 150}
+  - {input: "see right=3",    to: bad_odor, rate: 150}
+  - {input: "see forward=3",  to: bad_odor, rate: 150}
+  # свой (другая муха) — феромон сородича
+  - {input: "see left=2",     to: fly_odor, rate: 100}
+  - {input: "see right=2",    to: fly_odor, rate: 100}
+  - {input: "see forward=2",  to: fly_odor, rate: 100}
+  # растение — пища: атака растения дает его энергию (любой мухе, тип питания не важен).
+  # Сбоку — запах (смена направления: иногда муха развернется к растению), впереди — вкус -> слюна -> укус
+  - {input: "see left=7",     to: food_odor,  rate: 100}
+  - {input: "see right=7",    to: food_odor,  rate: 100}
+  - {input: "see forward=7",  to: plant_taste, rate: 150}
+  # "see K=1" (пусто) — отсутствие стимула, подавать нечего
+  #
+  # Еда: под собой — хоботок, впереди — проба лапками
+  - {input: "organics under",   to: sugar,     rate: 150}
+  - {input: "organics forward", to: leg_taste, rate: 150}
+  # CO2: фон мира ~0.16 — реагировать только выше порога
+  - {input: co2,    to: co2,               rate: 150, offset: 0.3}
+  # Нехватка O2 (без кислорода бот не действует): уйти и не есть. Рецептора O2 у взрослой мухи в FlyWire нет
+  - {input: oxygen, to: [heating, bitter], rate: 150, invert: true, offset: 0.5}
+  # Сытость (энергия выше 700) — сытая муха ходит и исследует; голодная стоит и питается (default).
+  # Не наоборот: бегая, голодная муха тратит энергию и не питается — умирает от голода
+  - {input: energy, to: walk,  rate: 120, offset: 0.7}
+  # Теснота — касания соседей
+  - {input: neighbours, to: touch, rate: 100}
+  # Высота: свет сверху (у фотосинтеза сектор 0 ярче всех)
+  - {input: y,      to: light, rate: 50, invert: true}
+  #
+  # --- Еще не подключены: у мухи аналога нет; место им — клетки Кеньона при обучении ---
+  # - {input: age, ...}          # остаток жизни: 1 при рождении -> 0 смерть (кислород старит быстрее)
+  # - {input: chains, ...}       # связей в многоклеточной цепочке / 8
+  # - {input: queen, ...}        # 1 — бот королева
+  # - {input: subordinate, ...}  # 1 — бот подчиненный королевы
+  # - {input: "has order", ...}  # 1 — есть невыполненный приказ королевы
+  # - {input: x, ...}            # x / ширина мира
+
+actions:
+  # from — группа; голос = gain x сглаженная частота группы (Гц); голоса ниже threshold не считаются.
+  # Побеждает самый сильный голос среди включенных у популяции действий; никого — действие default.
+  # dir: forward, back, left, right (относительно взгляда бота) или 0..7 — абсолютное.
+  #      У turn направление — это угол поворота: left — налево, right — направо.
+  # params: два числа 0..1, как у нейро-бота (sct.neuro.BotBody.act).
+  - {action: move,       dir: forward, from: walk,        gain: 1.0, threshold: 5}
+  - {action: move,       dir: back,    from: walk_back,   gain: 1.0, threshold: 5}
+  - {action: move,       dir: back,    from: escape,      gain: 3.0, threshold: 5}
+  - {action: turn,       dir: left,    from: steer_left,  gain: 1.0, threshold: 15}
+  - {action: turn,       dir: right,   from: steer_right, gain: 1.0, threshold: 15}
+  - {action: random_dir,               from: odor_turn,   gain: 0.5, threshold: 20}
+  # Еда органикой (хоботок). Тип питания мухе выдается при появлении (доля едоков — fly_recyclers):
+  # фотосинтетику recycle запрещен, едоку органики — photo; запрещенное действие не голосует
+  - {action: recycle,    params: [1.0, 0.0], from: proboscis, gain: 1.0, threshold: 5}   # [количество, <0.5 — под собой]
+  # угроза крыльями — у самки драк нет, это ближайшее к нападению; бегство (escape x3) сильнее
+  - {action: attack,     dir: forward, from: wings,       gain: 1.0, threshold: 20}
+  # укус растения впереди: слюна x2 перевешивает хоботок (recycle), который тот же вкус тоже возбуждает
+  - {action: attack,     dir: forward, from: saliva,      gain: 2.0, threshold: 10}
+  # откладка яиц — потомок сзади; в fly_mode=single мир деление не допустит, ход пропадет
+  - {action: divide,     dir: back, params: [0, 0], from: egg, gain: 1.0, threshold: 10}  # params[1] — тип потомка
+  #
+  # --- Еще не подключены ---
+  # - {action: seed, dir: back, params: [0.5, 0], from: egg, ...}  # семечко: [время полета, тип]
+  # - {action: set_dir, dir: 0, ...}             # повернуться в абсолютное направление 0..7
+  # - {action: give, dir: forward, ...}          # отдать соседу 1/4 энергии — аналога нет
+  # - {action: share, dir: forward, ...}         # энергию поровну с соседом — аналога нет
+  # - {action: chain_divide | chain_link | queen_become | queen_call | queen_order, ...}  # колония — аналога нет
+
+# Когда никто не голосует — первое разрешенное мухе: фотосинтетик фотосинтезирует (нужен CO2),
+# едок органики ест органику под собой
+default:
+  - {action: photo}
+  - {action: recycle, params: [1.0, 0.0]}

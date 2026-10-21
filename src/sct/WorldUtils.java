@@ -5,7 +5,7 @@ import java.util.stream.IntStream;
 
 public class WorldUtils {
 	public static Random rand = new Random();
-	public static void minerals(double[][] mnr_map) {//минералы
+	public static void minerals(double[][] mnr_map) {//случайный приток минералов (Constant.mineral_influx)
 		//приход минералов
 		int ymin = Constant.world_scale[1] - Constant.world_scale[1] / 8 * 2;
 		for (int i = 0; i < 100; i++) {
@@ -16,7 +16,8 @@ public class WorldUtils {
 				mnr_map[x][y] = 1000;
 			}
 		}
-		//TODO: логика минералов (растекание, потребление). Раньше здесь карта копировалась
+		//Потребление минералов — корни растений (sct.plants: минералы — их почва),
+		//пополнение — минерализация органики (Plant.mineralize). Раньше здесь карта копировалась
 		//из пустого new_map, и минералы обнулялись каждый шаг
 	}
 	//

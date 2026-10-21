@@ -48,8 +48,8 @@ public class KinClans {
 		//1. одинаковые геномы
 		HashMap<Long, ArrayList<Group>> by_hash = new HashMap<Long, ArrayList<Group>>();
 		ArrayList<Group> groups = new ArrayList<Group>();
-		for (Bot b : w.objects) {
-			if (b.killed != 0) {
+		for (IBot o : w.objects) {
+			if (!o.alive() || !(o instanceof Bot b)) {//кланы по геному — пока для ботов Oxygen
 				continue;
 			}
 			long h = hash(b.genom_array);
@@ -113,10 +113,16 @@ public class KinClans {
 		int diff = 0;
 		for (int i = 0; i < a.length; i++) {
 			int[] ai = a[i], bi = b[i];
-			for (int j = 0; j < ai.length; j++) {
-				if (ai[j] != bi[j] && ++diff > limit) {
+			int n = ai.length;
+			for (int j = 0; j < n; ) {//от различия к различию, совпадающие участки — векторно
+				int m = Arrays.mismatch(ai, j, n, bi, j, n);
+				if (m < 0) {
+					break;
+				}
+				if (++diff > limit) {
 					return diff;
 				}
+				j += m + 1;
 			}
 		}
 		return diff;

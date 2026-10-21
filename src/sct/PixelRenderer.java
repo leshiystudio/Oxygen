@@ -19,7 +19,11 @@ public class PixelRenderer {
 	private static final int chain_color = Theme.rgb(255, 150, 0);
 	//
 	public BufferedImage render(WorldBio w) {
-		int s = Constant.size;
+		return render(w, w.draw_type, w.res_draw_type, Constant.size, w.render, true);
+	}
+	//кадр с заданными режимами и размером клетки s — веб-просмотр рисует свой кадр, не трогая режимы окна.
+	//overlays — королевы и выделение: они рисуются в пикселях Constant.size, поэтому только при s == Constant.size
+	public BufferedImage render(WorldBio w, int draw_type, int res_draw_type, int s, boolean bots, boolean overlays) {
 		int ww = Constant.world_scale[0];
 		int wh = Constant.world_scale[1];
 		if (tile == null || tw != ww * s || th != wh * s) {//тайл создается один раз, а не на каждый кадр
@@ -28,33 +32,35 @@ public class PixelRenderer {
 			tile = new BufferedImage(tw, th, BufferedImage.TYPE_INT_RGB);
 			px = ((DataBufferInt) tile.getRaster().getDataBuffer()).getData();
 		}
-		draw_background(w, ww, wh, s);
-		if (w.render) {
-			draw_bots(w, s);
+		draw_background(w, res_draw_type, ww, wh, s);
+		if (bots) {
+			draw_bots(w, draw_type, s);
+		}
+		if (bots && overlays && s == Constant.size) {
 			Graphics2D g = tile.createGraphics();
-			if (w.draw_type == 7) {//связи королев с подчиненными и сами королевы поверх
-				for (Bot b : w.objects) {
-					if (b.queen == 1 && b.killed == 0) {
+			if (draw_type == 7) {//связи королев с подчиненными и сами королевы поверх
+				for (IBot o : w.objects) {
+					if (o instanceof Bot b && b.queen == 1 && b.killed == 0) {
 						b.queen_draw(g);
 					}
 				}
-				for (Bot b : w.objects) {
-					if (b.queen == 1 && b.killed == 0) {
+				for (IBot o : w.objects) {
+					if (o instanceof Bot b && b.queen == 1 && b.killed == 0) {
 						b.queen_mark(g);
 					}
 				}
 			}
-			Bot sel = w.selection;
-			if (sel != null) {//выбранный бот
+			IBot sel = w.selection;
+			if (sel != null) {//выбранное существо
 				g.setColor(Color.RED);
 				g.setStroke(new BasicStroke(2));
-				g.drawRect(sel.xpos * s - 2, sel.ypos * s - 2, s + 4, s + 4);
+				g.drawRect(sel.cell_x() * s - 2, sel.cell_y() * s - 2, s + 4, s + 4);
 			}
-			Bot prev = w.prev_selection;
-			if (prev != null && prev.killed == 0) {//предыдущий выбранный — для сравнения геномов
+			IBot prev = w.prev_selection;
+			if (prev != null && prev.alive()) {//предыдущее выбранное — для сравнения геномов
 				g.setColor(Color.YELLOW);
 				g.setStroke(new BasicStroke(1));
-				g.drawRect(prev.xpos * s - 2, prev.ypos * s - 2, s + 4, s + 4);
+				g.drawRect(prev.cell_x() * s - 2, prev.cell_y() * s - 2, s + 4, s + 4);
 			}
 			g.dispose();
 		}
@@ -69,8 +75,7 @@ public class PixelRenderer {
 		}
 	}
 	//
-	private void draw_background(WorldBio w, int ww, int wh, int s) {
-		int mode = w.res_draw_type;
+	private void draw_background(WorldBio w, int mode, int ww, int wh, int s) {
 		if (mode == 0) {
 			Arrays.fill(px, Theme.world_bg);
 			return;
@@ -87,8 +92,10 @@ public class PixelRenderer {
 				}else if (mode == 2) {//органика с кислородом поверх
 					c = Theme.mix(Theme.world_bg, Theme.organics, org / die);
 					c = Theme.mix(c, Theme.oxygen, w.oxygen_map[x][y] / ox_max * (210 / 255.0));
-				}else if (mode == 3) {//минералы
-					c = Theme.mix(Theme.world_bg, Theme.minerals, w.mnr_map[x][y] / 1000.0);
+				}else if (mode == 3) {//минералы (у растений — почва): корневая шкала до порога токсичности,
+					//иначе стартовые 100 из 1500 на темном фоне почти не видны
+					double scale = w.plants != null ? w.plants.c.max_energy_around : 1000.0;
+					c = Theme.mix(Theme.world_bg, Theme.minerals, Math.sqrt(Math.max(0, w.mnr_map[x][y]) / scale));
 				}else if (mode == 4) {//углекислый газ
 					c = Theme.mix(Theme.world_bg, Theme.co2, w.co2_map[x][y] / co2_max);
 				}else {//высоты
@@ -102,11 +109,15 @@ public class PixelRenderer {
 		}
 	}
 	//
-	private void draw_bots(WorldBio w, int s) {
-		int dt = w.draw_type;
+	private void draw_bots(WorldBio w, int dt, int s) {
 		int half = s / 2;
-		for (Bot b : w.objects) {
-			if (b.killed != 0) {
+		int len = (s - 1) / 2;//от центра до края клетки: при четном s длина half вышла бы в соседнюю клетку (и за край тайла)
+		for (IBot o : w.objects) {
+			if (!o.alive()) {
+				continue;
+			}
+			if (!(o instanceof Bot b)) {//другие виды — клеткой своего цвета
+				fill_cell(o.cell_x(), o.cell_y(), s, o.color(dt));
 				continue;
 			}
 			int c = b.get_color(dt).getRGB() & 0xFFFFFF;
@@ -123,11 +134,11 @@ public class PixelRenderer {
 			int cx = x0 + half;
 			int cy = y0 + half;
 			int dir_color = dt == 7 ? queen_dir : Theme.direction;
-			line_from_center(cx, cy, b.rotate, half, dir_color);
+			line_from_center(cx, cy, b.rotate, len, dir_color);
 			if (dt == 7) {
 				for (int i = 0; i < 8; i++) {
 					if (b.has_chain(i)) {
-						line_from_center(cx, cy, i, half, chain_color);
+						line_from_center(cx, cy, i, len, chain_color);
 					}
 				}
 			}

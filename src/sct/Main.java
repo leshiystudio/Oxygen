@@ -7,6 +7,7 @@ import javax.swing.*;
 public class Main{
 	public static void main(String[] args) {
 		Presets.apply_args(args);//--preset, --set, --seed, --w, --h, --bots, --theme (см. Presets)
+		WorldSettings.startup = WorldSettings.capture();//«По умолчанию» в диалоге «Новый мир» — настройки запуска
 		new File("saved worlds").mkdirs();
 		//
 		Theme.install_look_and_feel();//до создания окна, чтобы все элементы получили тему

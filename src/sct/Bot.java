@@ -12,14 +12,12 @@ import java.util.ListIterator;
 import java.util.function.Predicate;
 
 public class Bot extends BotSuper {
-	ArrayList<Bot> objects;
+	java.util.List<? extends IBot> objects;//список мира; боту нужен только чтобы передать потомкам
 	static Random rand = new Random();//один на всех ботов: раньше создавался у каждого; зерно задается в Main
-	public Bot[][] map;
+	public IBot[][] map;//общая сетка мира: в клетке любое существо
 	//
 	private int x;//позиция
 	private int y;
-	public int xpos;
-	public int ypos;
 	//
 	public Color color;//основные параметры
 	public Color clan_color = new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
@@ -41,18 +39,18 @@ public class Bot extends BotSuper {
 	public int state = 0;//тип бота
 	public int pht_org_block = 0;//специализация: 1 - фотосинтез, 2 - переработка органики
 	public int seed_time;//сколько лететь(если семечко)
-	public int killed = 0;//убит ли бот
 	public int queen = 0;//0-обычная особь, 1-королева, 2-подчиненная
 	public Bot queen_bot;
 	public int queen_command = -1;// команда от королевы
 	public int queen_marker = 0;
+	public Brain<Bot> brain = null;//null — геном (update_commands); иначе свой алгоритм (Brains)
 	public int kin_color = 0x808080;//цвет клана по геному (KinClans), режим отрисовки 8
 	public int kin_id = -1;
 	//
 	private double[][] oxygen_map;
 	private double[][] co2_map;
 	private double[][] org_map;
-	public Bot(int new_xpos, int new_ypos, Color new_color, double new_energy, int new_type, double[][] new_oxygen_map, double[][] new_co2_map, double[][] new_org_map, Bot[][] new_map, ArrayList<Bot> new_objects) {
+	public Bot(int new_xpos, int new_ypos, Color new_color, double new_energy, int new_type, double[][] new_oxygen_map, double[][] new_co2_map, double[][] new_org_map, IBot[][] new_map, java.util.List<? extends IBot> new_objects) {
 		xpos = new_xpos;
 		ypos = new_ypos;
 		x = new_xpos * Constant.size;
@@ -139,8 +137,9 @@ public class Bot extends BotSuper {
 			}
 		}
 	}
-	public int Update(ListIterator<Bot> iterator) {
+	public int Update(ListIterator<IBot> iterator) {
 		if (killed == 0) {
+			life_steps++;
 			if (state == 0) {//если бот
 				if(queen == 0) {
 					age -= (int)(oxygen_map[xpos][ypos] * Constant.age_minus_coeff) + 1;
@@ -204,9 +203,12 @@ public class Bot extends BotSuper {
 				if (res == 0) {//столкновение
 					int[] pos = get_rotate_position(rotate);
 					if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-						if (map[pos[0]][pos[1]] != null) {
+						IBot hit = occupant(pos);
+						if (hit != null) {
 							die_with_organics(Ledger.DIE_COLLISION);//убить семечко
-							map[pos[0]][pos[1]].die_with_organics(Ledger.DIE_COLLISION);//убить бота
+							if (seed_kills(hit)) {//другая популяция — по таблице взаимодействий
+								hit.die(Ledger.DIE_COLLISION);//убить того, в кого попало
+							}
 							return(0);
 						}
 					}
@@ -221,7 +223,11 @@ public class Bot extends BotSuper {
 		}
 		return(0);
 	}
-	public void update_commands(ListIterator<Bot> iterator) {//мозг
+	public void update_commands(ListIterator<IBot> iterator) {//мозг: геном или свой алгоритм (brain)
+		if (brain != null) {
+			brain.think(this, iterator);
+			return;
+		}
 		int max_mind = Constant.mind_size;
 		int max_genom = Constant.mind_count;
 		for (int i = 0; i < 5; i++) {
@@ -234,74 +240,48 @@ public class Bot extends BotSuper {
 				queen_command = -1;
 			}
 			if (command == 0) {//повернуться
-				rotate += commands[(index + 1) % max_mind] % 8;
-				rotate %= 8;
+				if (on(BotAction.TURN)) {
+					turn(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 			}else if (command == 1) {//сменить направление
-				rotate = commands[(index + 1) % max_mind] % 8;
+				if (on(BotAction.SET_DIR)) {
+					set_dir(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 			}else if (command == 2 || command == 3 || command == 4) {//фотосинтез
-				int sector = Constant.sector(ypos);
-				//if (sector <= 7 && pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
-				if (pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
-					pht_org_block = 1;
-					double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
-					energy += pe;
-					Ledger.in_sun += pe;
-					go_green();
-					oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
-//					if (oxygen_map[xpos][ypos] > 1) {
-//						oxygen_map[xpos][ypos] = 1;
-//					}
-					co2_map[xpos][ypos] -= Constant.pht_co2_coeff;
-					if (co2_map[xpos][ypos] < 0) {
-						co2_map[xpos][ypos] = 0;
-					}
+				if (on(BotAction.PHOTO)) {
+					photosynthesis();
 				}
 				index += 1;
 				index %= max_mind;
 				break;
 			}else if (command == 5) {//походить относительно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.move_ox_coeff * count && count_chains() == 0) {
-					oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
-					int sens = move(commands[(index + 1) % max_mind] % 8);
-					if (sens == 1) {
-						energy -= Constant.energy_for_move;
-						Ledger.out_move += Constant.energy_for_move;
-					}
+				if (on(BotAction.MOVE)) {
+					move_cmd(commands[(index + 1) % max_mind] % 8);
 				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if(command == 6) {//походить абсолютно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.move_ox_coeff * count && count_chains() == 0) {
-					oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
-					if(move(rotate) > 0) {
-						energy -= Constant.energy_for_move;
-						Ledger.out_move += Constant.energy_for_move;
-					}
+				if (on(BotAction.MOVE)) {
+					move_cmd(rotate);
 				}
 				index += 1;
 				index %= max_mind;
 				break;
 			}else if (command == 7) {//атаковать относительно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.attack_ox_coeff * count) {
-					oxygen_map[xpos][ypos] -= Constant.attack_ox_coeff * count;
-					attack(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.ATTACK)) {
+					attack_cmd(commands[(index + 1) % max_mind] % 8);
 				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 8) {//атаковать абсолютно
-				int count = bot_count() + 1;
-				if (count_oxygen() >= Constant.attack_ox_coeff * count) {
-					oxygen_map[xpos][ypos] -= Constant.attack_ox_coeff * count;
-					attack(rotate);
+				if (on(BotAction.ATTACK)) {
+					attack_cmd(rotate);
 				}
 				index += 1;
 				index %= max_mind;
@@ -312,12 +292,16 @@ public class Bot extends BotSuper {
 			}else if (command == 10) {//посмотреть абсолютно
 				index = commands[(index + 1 + see(rotate)) % max_mind];
 			}else if (command == 11 | command == 12) {//отдать ресурсы относительно
-				give(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.GIVE)) {
+					give(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 13 | command == 14) {//отдать ресурсы абсолютно
-				give(rotate);
+				if (on(BotAction.GIVE)) {
+					give(rotate);
+				}
 				index += 1;
 				index %= max_mind;
 				break;
@@ -331,13 +315,17 @@ public class Bot extends BotSuper {
 			//16, 17 — свободны (были проверки сектора по y; при замкнутом мире и отключенных секторах смысла не имели)
 			}else if (command == 18) {//поделиться относительно
 				int new_type = commands[(index + 2) % max_mind] % 8;
-				multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, false, iterator);
+				if (on(BotAction.DIVIDE)) {
+					multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, false, iterator);
+				}
 				index += 3;
 				index %= max_mind;
 				break;
 			}else if (command == 19) {//поделиться абсолютно
 				int new_type = commands[(index + 1) % max_mind] % 8;
-				multiply(rotate, 0, 0, new_type, false, iterator);
+				if (on(BotAction.DIVIDE)) {
+					multiply(rotate, 0, 0, new_type, false, iterator);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
@@ -363,12 +351,16 @@ public class Bot extends BotSuper {
 					index = commands[(index + 3) % max_mind];
 				}
 			}else if (command == 23) {//равномерное распределение ресурсов относительно
-				unif_distrib(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.SHARE)) {
+					unif_distrib(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 24) {//равномерное распределение ресурсов абсолютно
-				unif_distrib(rotate);
+				if (on(BotAction.SHARE)) {
+					unif_distrib(rotate);
+				}
 				index += 1;
 				index %= max_mind;
 				break;
@@ -383,25 +375,22 @@ public class Bot extends BotSuper {
 					index = commands[(index + 3) % max_mind];
 				}
 			}else if (command == 27 || command == 28) {//переработка органики под собой
-				if (pht_org_block != 1) {
-					pht_org_block = 2;
-					recycle_organics_under((int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
+				if (on(BotAction.RECYCLE)) {
+					recycle_cmd(-1, (int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
 				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 29 || command == 30) {//переработка органики перед собой относительно
-				if (pht_org_block != 1) {
-					pht_org_block = 2;
-					recycle_organics(commands[(index + 1) % max_mind] % 8, (int)(commands[(index + 2) % max_mind] * Constant.org_recycle_coeff));
+				if (on(BotAction.RECYCLE)) {
+					recycle_cmd(commands[(index + 1) % max_mind] % 8, (int)(commands[(index + 2) % max_mind] * Constant.org_recycle_coeff));
 				}
 				index += 3;
 				index %= max_mind;
 				break;
 			}else if (command == 31 || command == 32) {//переработка органики перед собой абсолютно
-				if (pht_org_block != 1) {
-					pht_org_block = 2;
-					recycle_organics(rotate, (int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
+				if (on(BotAction.RECYCLE)) {
+					recycle_cmd(rotate, (int)(commands[(index + 1) % max_mind] * Constant.org_recycle_coeff));
 				}
 				index += 2;
 				index %= max_mind;
@@ -438,7 +427,9 @@ public class Bot extends BotSuper {
 					index = commands[(index + 4) % max_mind];
 				}
 			}else if (command == 37) {//установить направление в случайное
-				rotate = rand.nextInt(8);
+				if (on(BotAction.RANDOM_DIR)) {
+					random_dir();
+				}
 				index += 1;
 				index %= max_mind;
 			}else if (command == 38) {//сколько ботов вокруг
@@ -455,14 +446,18 @@ public class Bot extends BotSuper {
 				int rot = commands[(index + 1) % max_mind] % 8;
 				int time = commands[(index + 2) % max_mind] % 16 + 1;
 				int new_type = commands[(index + 3) % max_mind] % 8;
-				multiply(rot, 1, time, new_type, false, iterator);
+				if (on(BotAction.SEED)) {
+					multiply(rot, 1, time, new_type, false, iterator);
+				}
 				index += 4;
 				index %= max_mind;
 				break;
 			}else if (command == 40) {//стрелять семечком абсолютно
 				int time = commands[(index + 1) % max_mind] % 16 + 1;
 				int new_type = commands[(index + 2) % max_mind] % 8;
-				multiply(rotate, 1, time, new_type, false, iterator);
+				if (on(BotAction.SEED)) {
+					multiply(rotate, 1, time, new_type, false, iterator);
+				}
 				index += 3;
 				index %= max_mind;
 				break;
@@ -470,13 +465,17 @@ public class Bot extends BotSuper {
 				index = commands[(index + 1 + type) % max_mind];
 			}else if (command == 42) {//добавление в цепочку относительно
 				int new_type = commands[(index + 2) % max_mind] % 8;
-				multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, true, iterator);
+				if (on(BotAction.CHAIN_DIVIDE)) {
+					multiply(commands[(index + 1) % max_mind] % 8, 0, 0, new_type, true, iterator);
+				}
 				index += 3;
 				index %= max_mind;
 				break;
 			}else if (command == 43) {//добавление в цепочку абсолютно
 				int new_type = commands[(index + 1) % max_mind] % 8;
-				multiply(rotate, 0, 0, new_type, true, iterator);
+				if (on(BotAction.CHAIN_DIVIDE)) {
+					multiply(rotate, 0, 0, new_type, true, iterator);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
@@ -491,12 +490,16 @@ public class Bot extends BotSuper {
 					index = commands[(index + 4) % max_mind];
 				}
 			}else if (command == 45) {//присоеденить соседа к цепочке относительно
-				add_neighbour_to_chain(commands[(index + 1) % max_mind] % 8);
+				if (on(BotAction.CHAIN_LINK)) {
+					add_neighbour_to_chain(commands[(index + 1) % max_mind] % 8);
+				}
 				index += 2;
 				index %= max_mind;
 				break;
 			}else if (command == 46) {//присоеденить соседа к цепочке абсолютно
-				add_neighbour_to_chain(rotate);
+				if (on(BotAction.CHAIN_LINK)) {
+					add_neighbour_to_chain(rotate);
+				}
 				index += 1;
 				index %= max_mind;
 				break;
@@ -509,7 +512,9 @@ public class Bot extends BotSuper {
 				index = commands[(index + 1 + genom_current_idx) % max_mind];
 			}else if(command == 49){//королева. прославить свою королеву
 				if(queen == 2 && queen_bot != null) {
-					set_queen(queen_bot,this,1);
+					if (on(BotAction.QUEEN_CALL)) {
+						set_queen(queen_bot,this,1);
+					}
 					index += 1;//без сдвига мозг выполнял эту команду вечно
 					index %= max_mind;
 					break;
@@ -522,7 +527,9 @@ public class Bot extends BotSuper {
 				if(c >= 5 && queen == 0 || queen == 1) {//если уже королева, то делаем повторный призыв подчиненных
 					//queen = 1;
 					//System.out.println("Рождение королевы. Связей: "+c);
-					set_queen(this,this,0);
+					if (on(BotAction.QUEEN_BECOME)) {
+						set_queen(this,this,0);
+					}
 					index = commands[(index + 1) % max_mind];
 				}else {
 					index = commands[(index + 2) % max_mind];
@@ -541,7 +548,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius + 1;
 					//System.out.println("Королева. Приказ королевы в дистанции: do_command="+do_command+" distance="+distance);
-					queen_orders(distance, do_command, 0);
+					if (on(BotAction.QUEEN_ORDER)) {
+						queen_orders(distance, do_command, 0);
+					}
 					index += 3;//команда + 2 параметра
 					index %= max_mind;
 					break;
@@ -554,7 +563,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius;
 					//System.out.println("Королева. Приказ королевы за дистанцией: do_command="+do_command+" distance="+distance);
-					queen_orders(distance, do_command, 1);
+					if (on(BotAction.QUEEN_ORDER)) {
+						queen_orders(distance, do_command, 1);
+					}
 					index += 3;//команда + 2 параметра
 					index %= max_mind;
 					break;
@@ -567,7 +578,9 @@ public class Bot extends BotSuper {
 					int do_command = commands[(index + 1) % max_mind] % 50;
 					int distance = commands[(index + 2) % max_mind] % Constant.queen_max_radius + 2;
 					//System.out.println("Королева. Приказ королевы перед дистанцией: do_command="+do_command+" distance="+distance);
-					queen_orders(distance, do_command, -1);
+					if (on(BotAction.QUEEN_ORDER)) {
+						queen_orders(distance, do_command, -1);
+					}
 					index += 3;//команда + 2 параметра
 					index %= max_mind;
 					break;
@@ -591,14 +604,94 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
+	//ДЕЙСТВИЯ ТЕЛА (BotAction). Код перенесен из update_commands без изменений.
+	//
+	public boolean on(BotAction a) {//включено ли действие (галочка популяции); выключенное — команда без эффекта
+		return pop != null ? pop.on(a.ordinal()) : a.enabled();
+	}
+	public double oxygen() {//среда в клетке бота — для датчиков и своих алгоритмов
+		return oxygen_map[xpos][ypos];
+	}
+	public double co2() {
+		return co2_map[xpos][ypos];
+	}
+	public double organics(int cx, int cy) {
+		return org_map[cx][cy];
+	}
+	public int dir(int d) {//направление действия: 0..7 или BotAction.FORWARD — куда смотрю
+		return d == BotAction.FORWARD ? rotate : Constant.mod(d, 8);
+	}
+	public void turn(int angle) {//повернуть на угол 0..7
+		rotate += angle;
+		rotate %= 8;
+	}
+	public void set_dir(int d) {
+		rotate = d;
+	}
+	public void random_dir() {
+		rotate = rand.nextInt(8);
+	}
+	public void photosynthesis() {//фотосинтез: нужен CO2, специализация — не переработчик
+		int sector = Constant.sector(ypos);
+		//if (sector <= 7 && pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
+		if (pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
+			pht_org_block = 1;
+			double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
+			energy += pe;
+			life_energy += pe;
+			Ledger.in_sun += pe;
+			go_green();
+			oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
+//			if (oxygen_map[xpos][ypos] > 1) {
+//				oxygen_map[xpos][ypos] = 1;
+//			}
+			co2_map[xpos][ypos] -= Constant.pht_co2_coeff;
+			if (co2_map[xpos][ypos] < 0) {
+				co2_map[xpos][ypos] = 0;
+			}
+		}
+	}
+	public void move_cmd(int rot) {//шаг: кислород по тесноте, без связей цепочки
+		int count = bot_count() + 1;
+		if (count_oxygen() >= Constant.move_ox_coeff * count && count_chains() == 0) {
+			oxygen_map[xpos][ypos] -= Constant.move_ox_coeff * count;
+			if (brain != null && brain.breathes()) {//муха выдыхает CO2 — по съеденному кислороду
+				co2_map[xpos][ypos] += Constant.move_ox_coeff * count * Constant.fly_move_co2;
+			}
+			int sens = move(rot);
+			if (sens == 1) {
+				energy -= Constant.energy_for_move;
+				Ledger.out_move += Constant.energy_for_move;
+			}
+		}
+	}
+	public void attack_cmd(int rot) {//атака: кислород по тесноте
+		int count = bot_count() + 1;
+		if (count_oxygen() >= Constant.attack_ox_coeff * count) {
+			oxygen_map[xpos][ypos] -= Constant.attack_ox_coeff * count;
+			attack(rot);
+		}
+	}
+	public void recycle_cmd(int rot, int amount) {//переработка органики: rot -1 — под собой; специализация — не фотосинтетик
+		if (pht_org_block != 1) {
+			pht_org_block = 2;
+			if (rot < 0) {
+				recycle_organics_under(amount);
+			}else {
+				recycle_organics(rot, amount);
+			}
+		}
+	}
+	//
 	//КОМАНДЫ
 	//
 	public void add_neighbour_to_chain(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
+			Bot n = bot_at(pos);
+			if (n != null && n.state == 0 && can_chain(n)) {
 				chain[rot] = true;
-				map[pos[0]][pos[1]].chain[(rot + 4) % 8] = true;
+				n.chain[(rot + 4) % 8] = true;
 			}
 		}
 	}
@@ -606,8 +699,8 @@ public class Bot extends BotSuper {
 	public int move(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] == null) {
-				Bot self = map[xpos][ypos];
+			if (occupant(pos) == null) {
+				IBot self = map[xpos][ypos];
 				map[xpos][ypos] = null;
 				xpos = pos[0];
 				ypos = pos[1];
@@ -625,10 +718,15 @@ public class Bot extends BotSuper {
 	public void attack(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null) {
-				Bot victim = map[pos[0]][pos[1]];
-				if (victim != null) {
+			IBot target = occupant(pos);
+			if (target != null) {
+				Bot victim = bot_at(pos);
+				if (victim == null || !same_population(victim)) {//другая популяция — по таблице взаимодействий
+					eat_other(target);
+				}else if (victim != null) {
 					energy += victim.energy;
+					life_energy += victim.energy;
+					life_kills++;
 					victim.energy = 0;//энергию забрал хищник: в органику уходит только тело
 					victim.die_with_organics(Ledger.DIE_EATEN);
 					go_red();
@@ -657,7 +755,7 @@ public class Bot extends BotSuper {
 			}
 			for (int i = 0; i < 8; i++) {
 				int[] pos = b.get_rotate_position(i);
-				Bot n = map[pos[0]][pos[1]];
+				Bot n = b.bot_at(pos);
 				if (n == null || n.state != 0 || n.killed != 0 || dist.containsKey(n)) {
 					continue;
 				}
@@ -736,9 +834,12 @@ public class Bot extends BotSuper {
 	//
 	public int see(int rot) {//мир замкнут, границы нет
 		int[] pos = get_rotate_position(rot);
-		Bot b = map[pos[0]][pos[1]];
+		IBot o = occupant(pos);
+		Bot b = bot_at(pos);
 		if (org_map[pos[0]][pos[1]] >= Constant.org_die_level) {
 			return(3);//если переизбыток органики
+		}else if (o != null && b == null) {
+			return(o.species().see_code);//существо другого вида: свой код (7 — растение, 8 — нейро-бот)
 		}else if (b == null) {
 			return(1);//если ничего
 		}else if (b.state != 0) {
@@ -747,6 +848,10 @@ public class Bot extends BotSuper {
 			return(5);//королева
 		}else if (b.queen == 2) {
 			return(6);//подчиненная
+		}else if ((brain instanceof sct.neuro.NeuroBrain) != (b.brain instanceof sct.neuro.NeuroBrain)) {
+			return(8);//бот с другим мозгом (нейро-бот для бота с геномом и наоборот)
+		}else if (brain instanceof sct.neuro.NeuroBrain<?> nb && nb.c.kin_by_weights && same_population(b)) {
+			return nb.same_kin((sct.neuro.NeuroBrain<?>) b.brain) ? 2 : 4;//родство нейро-ботов — по весам сети
 		}else if (count_different_genom(genom_array, b.genom_array) <= Constant.max_different_genom) {
 			return(2);//родственник
 		}else {
@@ -757,8 +862,8 @@ public class Bot extends BotSuper {
 	public void give(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-				Bot relative = map[pos[0]][pos[1]];
+			Bot relative = bot_at(pos);
+			if (relative != null && relative.state == 0 && can_share(relative)) {
 				if (relative.killed == 0) {
 					relative.energy += energy / 4;
 					energy -= energy / 4;
@@ -770,8 +875,8 @@ public class Bot extends BotSuper {
 	public void unif_distrib(int rot) {
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-				Bot relative = map[pos[0]][pos[1]];
+			Bot relative = bot_at(pos);
+			if (relative != null && relative.state == 0 && can_share(relative)) {
 				if (relative.killed == 0) {
 					double enr = relative.energy + energy;
 					relative.energy = enr / 2;
@@ -798,10 +903,22 @@ public class Bot extends BotSuper {
 			return;
 		}
 		double gas = take / 8.0;//газообмен — как раньше, от объема до умножения
+		if (brain != null && brain.breathes()) {//муха: еда — обратный обмен, CO2 поглощается, O2 выделяется
+			if (count_co2() >= gas * Constant.org_recycle_co2_coeff) {
+				co2_map[xpos][ypos] = Math.max(0, co2_map[xpos][ypos] - gas * Constant.org_recycle_co2_coeff);
+				oxygen_map[xpos][ypos] += gas * Constant.org_recycle_ox_coeff;
+				energy += take;
+				life_energy += take;
+				org_map[px][py] -= take;
+				go_yellow();
+			}
+			return;
+		}
 		if (count_oxygen() >= gas * Constant.org_recycle_ox_coeff) {
 			oxygen_map[xpos][ypos] = Math.max(0, oxygen_map[xpos][ypos] - gas * Constant.org_recycle_ox_coeff);
 			co2_map[xpos][ypos] += gas * Constant.org_recycle_co2_coeff;
 			energy += take;
+			life_energy += take;
 			org_map[px][py] -= take;
 			go_yellow();
 		}
@@ -842,11 +959,14 @@ public class Bot extends BotSuper {
 		return diff_count;
 	}
 	//
-	public void multiply(int rot, int seed, int time, int new_type, boolean ch, ListIterator<Bot> iterator) {
+	public void multiply(int rot, int seed, int time, int new_type, boolean ch, ListIterator<IBot> iterator) {
 		int max_mind = Constant.mind_size;
+		if (brain != null && !brain.can_multiply(this)) {//мозг не дает потомка (муха без свободного слота)
+			return;
+		}
 		int[] pos = get_rotate_position(rot);
 		if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-			if (map[pos[0]][pos[1]] == null) {
+			if (occupant(pos) == null) {
 				energy -= Constant.energy_for_multiply;
 				if (energy <= 0) {
 					Ledger.out_birth_fail += Constant.energy_for_multiply;//потомок не родился, цена деления потеряна
@@ -894,8 +1014,13 @@ public class Bot extends BotSuper {
 //					new_bot.commands = new_brain;
 					new_bot.genom_array = new_brain;
 					new_bot.set_current_genom(genom_current_idx);//потомок продолжает с того же генома, что и родитель
+					new_bot.brain = brain == null ? null : brain.child(this);
+					new_bot.pop = pop;
+					new_bot.inherit_life(this);
 					//цвет клана наследуется и чуть сдвигается при каждой мутации — видны родственные группы
 					new_bot.clan_color = mutated ? drift_color(clan_color, 10) : clan_color;
+					new_bot.kin_color = kin_color;//клан по геному — родительский до пересчета KinClans (на сервере редкого)
+					new_bot.kin_id = kin_id;
 					//
 					if (seed == 1) {
 						new_bot.state = 1;
@@ -914,10 +1039,91 @@ public class Bot extends BotSuper {
 		}
 	}
 	//
+	//СЕТКА И КОНТРАКТ IBot
+	//
+	public IBot occupant(int[] pos) {//любое существо в клетке
+		return map[pos[0]][pos[1]];
+	}
+	public Bot bot_at(int[] pos) {//бот в клетке (Oxygen или нейро), иначе null
+		IBot o = map[pos[0]][pos[1]];
+		return o instanceof Bot ? (Bot) o : null;
+	}
+	public Species species() {
+		return Species.OXYGEN_BOT;
+	}
+	private void eat_other(IBot target) {//съесть существо другой популяции: КПД и обмен из таблицы
+		double eff = eat_efficiency(target);
+		if (eff <= 0) {
+			return;
+		}
+		double given = target.eaten_by(this, eff);
+		double got = given * exchange(target);
+		Ledger.in_exchange += got - given;
+		energy += got;
+		life_energy += got;
+		life_kills++;
+		go_red();
+	}
+	public boolean crowds() {//семечко соседом не считается — как было в bot_count
+		return state == 0;
+	}
+	public double ledger_energy() {//энергия и тело (energy_for_multiply), см. Ledger
+		return killed == 0 ? energy + Constant.energy_for_multiply : 0;
+	}
+	public double energy_value() {
+		return energy;
+	}
+	public double eaten_by(IBot eater, double efficiency) {//съевшему — доля энергии, остаток и тело — в органику
+		double given = energy * efficiency;
+		energy -= given;
+		die_with_organics(Ledger.DIE_EATEN);
+		return given;
+	}
+	public void die(int cause) {
+		die_with_organics(cause);
+	}
+	//
+	//НАСЛЕДСТВЕННОСТЬ для клонов в новом мире (Elite): геном, цвет клана, нейросеть (если есть)
+	//
+	record Heritage(int[][] genome, int genom_idx, Color clan_color, sct.neuro.NeuroBrain<Bot> net) {}
+	public Object heritage() {
+		int[][] g = new int[genom_array.length][];
+		for (int i = 0; i < g.length; i++) {
+			g[i] = genom_array[i].clone();
+		}
+		return new Heritage(g, genom_current_idx, clan_color, brain instanceof sct.neuro.NeuroBrain<Bot> nb ? nb.exact_copy() : null);
+	}
+	public void take_heritage(Object h) {//точная копия: без мутации
+		if (!(h instanceof Heritage hb) || hb.genome().length != genom_array.length) {
+			return;
+		}
+		for (int i = 0; i < genom_array.length; i++) {
+			if (hb.genome()[i].length == genom_array[i].length) {
+				genom_array[i] = hb.genome()[i].clone();
+			}
+		}
+		set_current_genom(hb.genom_idx());
+		clan_color = hb.clan_color();
+		if (hb.net() != null && brain instanceof sct.neuro.NeuroBrain<?>) {
+			brain = hb.net().exact_copy();
+		}
+	}
+	public boolean same_kin(IBot other) {
+		return other instanceof Bot && other.species() == species() && same_population(other)
+			&& count_different_genom(genom_array, ((Bot) other).genom_array) <= Constant.max_different_genom;
+	}
+	public int color(int draw_type) {
+		return get_color(draw_type).getRGB() & 0xFFFFFF;
+	}
+	public String describe() {
+		return String.format("%s [%d, %d] energy %.1f, age %.1f, type %d, queen %d, chains %d, genom %d, index %d",
+			species().title, xpos, ypos, energy, age, type, queen, count_chains(), genom_current_idx, index);
+	}
+	//
 	//СОХРАНЕНИЕ (WorldIO)
 	//
 	int load_queen_ref = -1;//номер королевы в файле, связывается после чтения всех ботов
-	public void save(java.io.DataOutputStream out, java.util.Map<Bot, Integer> ids) throws java.io.IOException {
+	public void save(java.io.DataOutputStream out, java.util.Map<? extends IBot, Integer> ids) throws java.io.IOException {
 		out.writeInt(xpos);
 		out.writeInt(ypos);
 		out.writeInt(color.getRGB());
@@ -949,7 +1155,7 @@ public class Bot extends BotSuper {
 		out.writeInt(queen_command);
 		out.writeInt(queen_marker);
 	}
-	public static Bot load(java.io.DataInputStream in, double[][] oxygen_map, double[][] co2_map, double[][] org_map, Bot[][] map, ArrayList<Bot> objects) throws java.io.IOException {
+	public static Bot load(java.io.DataInputStream in, double[][] oxygen_map, double[][] co2_map, double[][] org_map, IBot[][] map, java.util.List<? extends IBot> objects) throws java.io.IOException {
 		int bx = in.readInt();
 		int by = in.readInt();
 		Color c = new Color(in.readInt());
@@ -1034,7 +1240,8 @@ public class Bot extends BotSuper {
 		for (int i = 0; i < 8; i++) {
 			int[] pos = get_rotate_position(i);
 			if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-				if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
+				IBot o = occupant(pos);
+				if (o != null && o.crowds()) {
 					count++;
 				}
 			}
@@ -1048,7 +1255,8 @@ public class Bot extends BotSuper {
 			for (int d = 1; d <= 3; d++) { //дистанция 
 				int[] pos = get_rotate_position(i,d);
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
+					IBot o = occupant(pos);
+					if (o != null && o.crowds()) {
 						count++;
 					}
 				}
@@ -1066,6 +1274,9 @@ public class Bot extends BotSuper {
 		}
 		killed = 1;
 		Ledger.die(cause);
+		if (brain != null) {
+			brain.died(this, cause);
+		}
 		if (queen == 1) {//корона переходит наследнице, иначе вся колония гибнет вместе с королевой
 			pass_crown();
 		}
@@ -1170,6 +1381,8 @@ public class Bot extends BotSuper {
 				}else {
 					c = new Color(255, 0, 255);
 				}
+			}else if(draw_type == 9) {// популяции
+				c = pop != null ? pop.color : Color.GRAY;
 			}else if(draw_type == 8) {// кланы по геному
 				c = new Color(kin_color);
 			}else if(draw_type == 7) {// королевы
@@ -1251,8 +1464,9 @@ public class Bot extends BotSuper {
 			if (chain[i]) {
 				int[] pos = get_rotate_position(i);
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						energy_sum += map[pos[0]][pos[1]].energy;
+					Bot n = bot_at(pos);
+					if (n != null && n.state == 0) {
+						energy_sum += n.energy;
 						c++;
 					}else {
 						chain[i] = false;
@@ -1267,7 +1481,7 @@ public class Bot extends BotSuper {
 				if (chain[i]) {
 					int[] pos = get_rotate_position(i);
 					if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-						map[pos[0]][pos[1]].energy = enr;
+						bot_at(pos).energy = enr;
 					}
 				}
 			}
@@ -1279,14 +1493,33 @@ public class Bot extends BotSuper {
 			if (chain[g]) {
 				int[] pos = get_rotate_position(g);
 				if (pos[1] >= 0 && pos[1] < Constant.world_scale[1]) {
-					if (map[pos[0]][pos[1]] != null && map[pos[0]][pos[1]].state == 0) {
-						map[pos[0]][pos[1]].chain[(g + 4) % 8] = false;
+					Bot n = bot_at(pos);
+					if (n != null && n.state == 0) {
+						n.chain[(g + 4) % 8] = false;
 					}
 				}
 			}
 		}
 	}
 	//
+	//роль бота по цвету режима Predators: каждое действие сдвигает цвет к своему
+	//(фотосинтез — к зеленому, атака — к красному, переработка органики — к желтому)
+	public static final int ROLE_NONE = 0, ROLE_PHOTO = 1, ROLE_PREDATOR = 2, ROLE_RECYCLER = 3, ROLE_MIXED = 4;
+	public int role() {
+		if (c_red < 0) {
+			return ROLE_NONE;//еще ничего не делал
+		}
+		if (c_red >= 160 && c_green >= 160) {
+			return ROLE_RECYCLER;//желтый
+		}
+		if (c_red - c_green >= 64) {
+			return ROLE_PREDATOR;
+		}
+		if (c_green - c_red >= 64) {
+			return ROLE_PHOTO;
+		}
+		return ROLE_MIXED;
+	}
 	public boolean has_chain(int rot) {//для отрисовки
 		return chain[rot];
 	}

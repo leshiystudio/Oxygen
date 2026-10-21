@@ -8,6 +8,7 @@ public class Constant {
 	public static int size = 5;
 	public static int[] world_scale = {400,400};//{16 * 50, 9 * 50};
 	public static int starting_bot_count = 5000;
+	public static int starting_plant_count = 0;//ростков растений (sct.plants) при создании мира; 0 — растений нет
 	public static int mind_size = 64; //длина одного генома
 	public static int mind_count = 2; //32; количество геномов
 	public static int mind_max_value_command = 64; //64; //максимальное значение для индекса команды
@@ -16,8 +17,8 @@ public class Constant {
 	public static int starting_org = 200;
 	public static double ox_render_maximum_coeff = 0.25; //0.25;
 	public static double co2_render_maximum_coeff = 0.25; //0.25;
-	public static String[] draw_type_names = {"predators", "color", "energy", "clans", "age", "types", "chains", "queens", "kin"}; //индекс = номер режима в Bot.get_color
-	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2"};
+	public static String[] draw_type_names = {"predators", "color", "energy", "clans", "age", "types", "chains", "queens", "kin", "population"}; //индекс = номер режима в Bot.get_color
+	public static String[] res_type_names = {"none", "oxygen", "org+oxygen", "minerals", "co2", "height"};
 	public static String[] mouse_func_names = {"select", "set", "remove"};
 	public static int[] zoom_sizes = {5, 5, 10}; //{2, 5, 10};
 	//
@@ -46,6 +47,29 @@ public class Constant {
 	public static int mutate_chance_percent = 10;
 	//
 	public static int queen_max_radius = 8;
+	//
+	public static String bot_actions_off = "";//выключенные действия бота через запятую (BotAction), например "attack,seed"
+	public static String bot_brain = "genome";//мозг ботов (Brains): genome — геном команд
+	//мозг мухи (популяция с мозгом fly, sct.neuro.FlyBrain); привязка датчиков и действий — flybrain/mapping.yaml
+	public static int starting_fly_count = 0;//мух при создании мира (своя популяция Flies); 0 — без мух
+	public static String fly_mode = "single";//single — мухи не размножаются; learn — размножаются в пределах fly_slots
+	public static double fly_recyclers = 0.5;//доля мух-едоков органики (остальные — фотосинтетики); тип — при появлении мухи
+	public static double fly_move_co2 = 1.0;//сколько CO2 муха выдыхает на шаг — доля от съеденного шагом кислорода
+	public static int fly_slots = 8;//сколько мух помещается на видеокарте в режиме learn (рекомендуемое сервис печатает при запуске)
+	//где сервис flybrain/server.py: auto — из переменной окружения OXYGEN_FLY_HOST, без нее 127.0.0.1.
+	//Не на этой машине (Docker: host.docker.internal) — мир сервис не запускает, его запускают на машине с видеокартой
+	public static String fly_host = "auto";
+	public static int fly_port = 5577;
+	public static String fly_python = "python";//чем запускать сервис, если он еще не запущен
+	//перезапуск мира, когда жизнь кончилась (WorldBio.auto_restart): off — нет, all — вымерли все популяции,
+	//any — вымерла любая популяция. Мир создается заново с теми же настройками (зерно — следующее)
+	public static String restart_mode = "off";
+	public static int elite = 0;//1 — при перезапуске новый мир заселяется точными клонами лучших (Elite)
+	public static int elite_size = 100;//сколько лучших хранить на популяцию
+	public static String elite_fields = "lifetime,children";//по каким счетчикам оценка (Elite.FIELDS через запятую)
+	public static int mineral_influx = -1;//случайный приток минералов в нижнюю четверть мира: 1 — да, 0 — нет, -1 — только в мире без растений
+	public static String plant_actions_off = "";
+	public static String plant_brain = "";//мозг растений: think_new, think_old, neuro; пусто — по plant.think_mode//выключенные действия растений (PlantAction), например "eat,move"
 	//
 	public static double pht_coeff = 110; //400;
 	public static int[] pht_energy_list = {12, 11, 10, 9, 8, 7, 6, 5};

@@ -1,5 +1,6 @@
 package sct;
 
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
@@ -69,9 +70,16 @@ public class WorldBioControler extends JPanel{
         //
         header("Simulation");
 		button_start_stop.addActionListener(e -> start_stop());
-        JButton new_population_button = new JButton("New world");
+        JButton new_population_button = new JButton("Again");
+        new_population_button.setToolTipText("new world with the same settings");
         new_population_button.addActionListener(e -> world.newPopulation());
         place_pair(button_start_stop, new_population_button);
+
+        JButton new_world_button = new JButton("New world...");
+        new_world_button.addActionListener(e -> NewWorldDialog.open(SwingUtilities.getWindowAncestor(this), world));
+        JButton help_button = new JButton("Help (H)");
+        help_button.addActionListener(e -> HelpDialog.toggle(SwingUtilities.getWindowAncestor(this)));
+        place_pair(new_world_button, help_button);
 
         JButton step_button = new JButton("Step (N)");
         step_button.addActionListener(e -> world.request_step());
@@ -122,14 +130,14 @@ public class WorldBioControler extends JPanel{
         place_pair(draw_type_button("Clans", 3), draw_type_button("Kin", 8));
         place_pair(draw_type_button("Age", 4), draw_type_button("Color", 1));
         place_pair(draw_type_button("Type", 5), draw_type_button("Chain", 6));
-        place_pair(draw_type_button("Queen", 7), new JLabel());
+        place_pair(draw_type_button("Queen", 7), draw_type_button("Population", 9));
 
         //
         //смена режимов отрисовки фона
         //
         header("Background");
         place_pair(res_draw_type_button("None", 0), res_draw_type_button("Oxygen", 1));
-        place_pair(res_draw_type_button("Org + O2", 2), res_draw_type_button("Minerals", 3));
+        place_pair(res_draw_type_button("Org + O2", 2), res_draw_type_button("Minerals / soil", 3));
         place_pair(res_draw_type_button("Co2", 4), new JLabel());
 
         //
@@ -185,7 +193,8 @@ public class WorldBioControler extends JPanel{
         bind_key("OPEN_BRACKET", () -> world.next_tool(-1));
         bind_key("CLOSE_BRACKET", () -> world.next_tool(1));
         bind_key("ESCAPE", world::reset_tool);
-        for (int i = 1; i <= 8; i++) {
+        bind_key("H", () -> HelpDialog.toggle(SwingUtilities.getWindowAncestor(this)));
+        for (int i = 1; i <= 9; i++) {//10-я группа (популяции) — галочкой
         	int group = i - 1;
         	bind_key(String.valueOf(i), () -> graphs.toggle_group(group));
         }
@@ -297,8 +306,9 @@ public class WorldBioControler extends JPanel{
 	}
 
 	private void refresh() {
-		label_bot_count.setText("bots: " + world.b_count + ", seeds: " + world.org_count);
-		label_steps.setText("steps: " + world.steps + (Presets.seed >= 0 ? ", seed " + Presets.seed : ""));
+		label_bot_count.setText("bots: " + world.b_count + ", seeds: " + world.org_count + (world.plants != null ? ", plants: " + world.plant_count : ""));
+		label_steps.setText("steps: " + world.steps + (Presets.seed >= 0 ? ", seed " + Presets.seed : "")
+			+ (world.restarts > 0 || !Constant.restart_mode.equals("off") ? ", restarts " + world.restarts : ""));
 		label_ms.setText(String.format("ms/step: %.1f", world.ms_per_step));
 		label_speed.setText("speed: " + world.speed_name());
 		label_balance.setText(String.format("balance diff: %.2g", Ledger.total_diff));
@@ -309,23 +319,38 @@ public class WorldBioControler extends JPanel{
 			tool_box.setSelectedIndex(world.tool_idx);
 		}
 
-        Bot s = world.selection;//выбранный бот
-        if (s != null) {
-        	label_sel_pos.setText("position: [" + s.xpos + ", " + s.ypos + "]");
+        IBot o = world.selection;//выбранное существо
+        IBot p = world.prev_selection;
+        String cmp = p != null && p != o && o != null ? (o.same_kin(p) ? ", vs prev: own" : ", vs prev: alien") : "";
+        if (o instanceof Bot s) {
+        	label_sel_pos.setText("[" + s.xpos + ", " + s.ypos + "] " + (s.pop != null ? s.pop.name : "bot"));
         	label_sel_energy.setText("energy: " + (int) s.energy + ", age: " + (int) s.age);
         	label_sel_type.setText("type: " + s.type + ", queen: " + s.queen + ", chains: " + s.count_chains());
-        	label_sel_genom.setText("genom: " + s.genom_current_idx + ", index: " + s.index);
-        	Bot p = world.prev_selection;
-        	String cmp = "";
-        	if (p != null && p != s) {
-        		int diff = s.count_different_genom(s.genom_array, p.genom_array);
+        	label_sel_genom.setText("brain: " + WorldBio.brain_name(s) + ", genom " + s.genom_current_idx + ", index " + s.index);
+        	if (p instanceof Bot pb && p != s && s.brain == null) {
+        		int diff = s.count_different_genom(s.genom_array, pb.genom_array);
         		cmp = ", vs prev: " + diff + (diff <= Constant.max_different_genom ? " own" : " alien");
         	}
         	label_sel_kin.setText("kin: " + s.kin_id + cmp);
         	sel_color_box.setBackground(s.color);
         	sel_color_box.setVisible(true);
+        }else if (o instanceof sct.plants.Plant s) {
+        	label_sel_pos.setText("[" + s.xpos + ", " + s.ypos + "] " + (s.pop != null ? s.pop.name : "plant"));
+        	label_sel_energy.setText("energy: " + s.energy + " (+" + (s.ina + s.inb) + "), health: " + s.health);
+        	label_sel_type.setText("cell: " + sct.plants.Plant.type_names[s.type] + ", age: " + s.age);
+        	label_sel_genom.setText("brain: " + WorldBio.brain_name(s) + ", gene " + s.gen + ", cmd " + s.cmd);
+        	label_sel_kin.setText("head " + s.head + ", parent dir " + s.dpar + cmp);
+        	sel_color_box.setBackground(new Color(s.color));
+        	sel_color_box.setVisible(true);
+        }else if (o != null) {
+        	label_sel_pos.setText(o.describe());
+        	label_sel_energy.setText("");
+        	label_sel_type.setText("");
+        	label_sel_genom.setText("");
+        	label_sel_kin.setText("");
+        	sel_color_box.setVisible(false);
         }else {
-        	label_sel_pos.setText("none (left click a bot)");
+        	label_sel_pos.setText("none (left click a cell)");
         	label_sel_energy.setText("");
         	label_sel_type.setText("");
         	label_sel_genom.setText("");

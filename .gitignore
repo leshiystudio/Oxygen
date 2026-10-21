@@ -4,3 +4,6 @@
 /.settings
 /saved worlds
 /out/
+.env
+/flybrain/data/
+__pycache__/
