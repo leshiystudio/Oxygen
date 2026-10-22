@@ -29,7 +29,7 @@ import com.sun.net.httpserver.HttpServer;
 //       [--resume] [--load файл.oxw] [--settings файл.properties] [--autosave минут] [--frame-ms 1000] [--brain-limit 10]
 //       [--trust-proxy] [--view-rps 10] [--view-burst 30] [--streams-per-ip 6] [--max-streams 500]
 //       [--stats-every 10] [--kin-every 500]
-//       [--record 0_2,8_0] [--record-ms 1000] [--record-minutes 60] [--record-steps N] [--record-window-steps W] [--record-fps 30] [--record-crf 28] [--record-dir video] [--ffmpeg ffmpeg]
+//       [--record 0_2,8_0] [--record-ms 1000] [--record-minutes 60] [--record-steps N] [--record-window-steps W] [--record-fps 30] [--record-crf 28] [--record-upscale 2] [--record-dir video] [--ffmpeg ffmpeg]
 //       [--preset ... --set ...]
 //Порт просмотра — только чтение: страница, кадр, статус, графики. Порт управления — то же плюс
 //пауза, скорость, новый мир по настройкам (.properties как у диалога «Новый мир»), сохранение и загрузка.
@@ -75,6 +75,7 @@ public class Server {
 				case "--record-window-steps": VideoRecorder.window_steps = Math.max(0, Integer.parseInt(args[++i])); break;
 				case "--record-minutes": VideoRecorder.minutes = Math.max(1, Integer.parseInt(args[++i])); break;
 				case "--record-fps": VideoRecorder.fps = Math.max(1, Integer.parseInt(args[++i])); break;
+				case "--record-upscale": VideoRecorder.upscale = Math.max(1, Math.min(4, Integer.parseInt(args[++i]))); break;
 				case "--record-crf": VideoRecorder.crf = Math.max(0, Math.min(51, Integer.parseInt(args[++i]))); break;
 				case "--record-dir": VideoRecorder.root = new File(args[++i]); break;
 				case "--ffmpeg": VideoRecorder.ffmpeg = args[++i]; break;

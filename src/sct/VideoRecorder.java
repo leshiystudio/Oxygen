@@ -34,8 +34,11 @@ public class VideoRecorder {
 	static final int frames_per_step_segment = 60;
 	public static int fps = 30;//скорость проигрывания: кадров записи в секунде видео
 	//качество H.264: больше — меньше файл. Кадры мира раз в секунду почти не похожи друг на друга, поэтому сжимаются плохо:
-	//на мире 400x400 (кадр 800x800) замер — crf 20 ~4 МБ, crf 28 ~2,3 МБ на минуту записи
+	//на мире 400x400 (кадр 800x800, crf 28) замер — 3,7–3,8 МБ на минуту записи
 	public static int crf = 28;
+	//увеличение кадра перед кодированием: 2 — клетка 2x2 пикселя, цвет одиночного бота не расплывается (4:2:0);
+	//1 — вчетверо меньше пикселей: процессор и файл вдвое меньше, но цвет мелочи смазан
+	public static int upscale = 2;
 	public static File root = new File("video");//каталог видов: <root>/<вид>/index.m3u8
 	public static String ffmpeg = "ffmpeg";
 	public static final List<VideoRecorder> all = new ArrayList<VideoRecorder>();
@@ -265,7 +268,9 @@ public class VideoRecorder {
 	//ffmpeg: сырые кадры -> H.264 -> HLS. Кадр удваивается без сглаживания: в H.264 для браузера цвет хранится
 	//с половинным разрешением (4:2:0), и бот в 1 пиксель расплылся бы. Ключевой кадр — в начале каждого сегмента.
 	//append_list: перезапуск (ffmpeg упал, контейнер перезапущен, сменился размер) продолжает тот же плейлист с разрывом.
-	//preset medium: при кадре в секунду процессора на него все равно ~2 % ядра, а файл меньше, чем у veryfast.
+	//preset superfast: замер на 180 кадрах мира 400x400 (x2, crf 28) — 8 мс процессора на кадр и 120 МБ памяти,
+	//а файл даже меньше, чем у medium (40 мс и 220 МБ) и veryfast (15 мс, 135 МБ): кадры раз в секунду почти не
+	//похожи друг на друга, и долгий поиск движения кодировщику ничего не дает.
 	private class Ffmpeg implements Encoder {
 		private Process p;
 		public OutputStream start(int width, int height) throws IOException {
@@ -281,8 +286,8 @@ public class VideoRecorder {
 			}
 			cmd.addAll(List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
 				"-f", "rawvideo", "-pix_fmt", "bgr0", "-s", width + "x" + height, "-framerate", String.valueOf(fps), "-i", "-",
-				"-vf", "scale=iw*2:ih*2:flags=neighbor,format=yuv420p",
-				"-c:v", "libx264", "-preset", "medium", "-tune", "animation", "-crf", String.valueOf(crf), "-threads", "1",
+				"-vf", (upscale > 1 ? "scale=iw*" + upscale + ":ih*" + upscale + ":flags=neighbor," : "") + "pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p",//yuv420p — только четные стороны
+				"-c:v", "libx264", "-preset", "superfast", "-tune", "animation", "-crf", String.valueOf(crf), "-threads", "1",
 				"-g", String.valueOf(per_segment), "-keyint_min", String.valueOf(per_segment), "-sc_threshold", "0",
 				"-f", "hls", "-hls_time", String.valueOf((double) per_segment / fps), "-hls_list_size", String.valueOf(segments()),
 				"-hls_flags", flags, "-hls_segment_filename", new File(dir, "seg_%05d.ts").getPath(), playlist.getPath()));
