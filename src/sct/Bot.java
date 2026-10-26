@@ -637,20 +637,23 @@ public class Bot extends BotSuper {
 	public void photosynthesis() {//фотосинтез: нужен CO2, специализация — не переработчик
 		int sector = Constant.sector(ypos);
 		//if (sector <= 7 && pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
-		if (pht_org_block != 2 && count_co2() >= Constant.pht_co2_coeff) {
+		boolean gas = Constant.pht_gas != 0;//0 — без газообмена: CO2 не нужен, O2 не выделяется
+		if (pht_org_block != 2 && (!gas || count_co2() >= Constant.pht_co2_coeff)) {
 			pht_org_block = 1;
 			double pe = photo_energy(sector);//один вызов: photo_energy расходует органику вокруг
 			energy += pe;
 			life_energy += pe;
 			Ledger.in_sun += pe;
 			go_green();
-			oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
-//			if (oxygen_map[xpos][ypos] > 1) {
-//				oxygen_map[xpos][ypos] = 1;
-//			}
-			co2_map[xpos][ypos] -= Constant.pht_co2_coeff;
-			if (co2_map[xpos][ypos] < 0) {
-				co2_map[xpos][ypos] = 0;
+			if (gas) {
+				oxygen_map[xpos][ypos] += Constant.pht_ox_coeff * pe;
+//				if (oxygen_map[xpos][ypos] > 1) {
+//					oxygen_map[xpos][ypos] = 1;
+//				}
+				co2_map[xpos][ypos] -= Constant.pht_co2_coeff;
+				if (co2_map[xpos][ypos] < 0) {
+					co2_map[xpos][ypos] = 0;
+				}
 			}
 		}
 	}

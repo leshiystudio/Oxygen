@@ -620,6 +620,7 @@ public class Plant extends BotSuper {
 				life_energy += sun;
 			}
 			add_health(hp);
+			leaf_gas(c);
 		}
 		if (t == LEAF || t == TRANS) {
 			for (int d = 0; d < 8; d++) {
@@ -693,6 +694,21 @@ public class Plant extends BotSuper {
 			life_energy += gain;
 		}
 		return true;
+	}
+	//дыхание листа (leaf_co2_draw): CO2 своей клетки -> O2, без энергии. Газов нет — ничего
+	private void leaf_gas(PlantConfig c) {
+		if (c.leaf_co2_draw <= 0 || w.co2 == null) {
+			return;
+		}
+		double g = w.co2[xpos][ypos];
+		double take = g > c.leaf_co2_draw ? c.leaf_co2_draw : g;
+		if (take <= 0) {
+			return;
+		}
+		w.co2[xpos][ypos] = g - take;
+		if (w.oxygen != null) {
+			w.oxygen[xpos][ypos] += take * c.leaf_o2_per_co2;
+		}
 	}
 	public double co2_around() {//CO2 в клетке и 8 соседних — датчик для нейросети и своих алгоритмов
 		if (w.co2 == null) {

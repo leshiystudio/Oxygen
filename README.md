@@ -112,6 +112,11 @@ java -cp out sct.Main --set starting_plant_count=1500 --set plant_preset=origina
 не удаётся, без ошибок. Доступно нейросети и своим алгоритмам; `think_new` — при `plant.todo_mod=9`
 (по умолчанию 8 — правила biosim не меняются, и растения кислород **не выделяют**).
 
+Кислород от листьев вместо ботов: `--set plant.leaf_co2_draw=0.0003` — каждый лист на каждом ходу забирает
+столько CO₂ из своей клетки и выделяет O₂ (`plant.leaf_o2_per_co2` за единицу), энергии это не дает;
+`--set pht_gas=0` — фотосинтез ботов дает энергию без газообмена (CO₂ не нужен, O₂ не выделяется).
+Боты по-прежнему дышат: жизнь, шаг, атака и переработка органики тратят O₂, жизнь выделяет CO₂.
+
 ## Нейросеть (NeuroBot, NeuroPlant)
 
 Мозг `neuro` подходит и ботам, и растениям: у каждого существа своя сеть, потомок получает копию
@@ -322,6 +327,11 @@ Link to Oxygen gases — the sprout action **`absorb_co2`**: draw CO₂ from its
 gain energy (`plant.absorb_co2_energy` per unit of CO₂) and release oxygen. No gas — the action
 fails silently. Available to the neural network and custom algorithms; `think_new` uses it at
 `plant.todo_mod=9` (8 by default — biosim rules unchanged, and plants release **no** oxygen).
+
+Oxygen from leaves instead of bots: `--set plant.leaf_co2_draw=0.0003` — every leaf takes that much CO₂ from its
+cell each step and releases O₂ (`plant.leaf_o2_per_co2` per unit), with no energy gain;
+`--set pht_gas=0` — bot photosynthesis gives energy without gas exchange (no CO₂ needed, no O₂ released).
+Bots still breathe: living, moving, attacking and recycling use O₂, living releases CO₂.
 
 ## Neural network (NeuroBot, NeuroPlant)
 

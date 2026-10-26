@@ -35,6 +35,7 @@ public class Constant {
 	//
 	public static double life_co2_coeff = 0.001;
 	public static double pht_co2_coeff = 0.0003;
+	public static int pht_gas = 1;//газообмен фотосинтеза ботов: 1 — нужен и поглощается CO2, выделяется O2; 0 — энергия от солнца без газов (O2 дают листья растений)
 	public static double org_recycle_co2_coeff = 0.000097; //0.0001;
 	public static double die_co2_coeff = 0.0003;
 	//

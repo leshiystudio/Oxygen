@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.imageio.ImageIO;
 
@@ -524,6 +525,11 @@ public class Server {
 	static final long min_frame_ms = 200;
 	static volatile long frame_ms = 1000;
 	private static final PixelRenderer renderer = new PixelRenderer();
+	//очередь к renderer — ReentrantLock, а не synchronized: запросы идут в виртуальных потоках, а виртуальный поток,
+	//ждущий внутри synchronized или на входе в него, занимает поток-носитель (их столько, сколько ядер; до Java 24).
+	//Носители кончались: все — у ждущих кадр, а честную w.lock передавали запросу статуса, которому не на чем
+	//выполниться, — мир и кадры вставали навсегда. Ожидание на ReentrantLock носитель отпускает
+	private static final ReentrantLock render_lock = new ReentrantLock();
 	private static final int frame_cache_size = 32;//комбинаций; дольше всех не запрошенная — вон
 	private record Frame(long tick, int step, long time, String etag, byte[] png) {}
 	private static final Map<String, Frame> frames = new java.util.LinkedHashMap<String, Frame>(16, 0.75f, true) {
@@ -547,7 +553,8 @@ public class Server {
 		boolean bots = !"0".equals(q.get("bots"));
 		String key = mode + "/" + bg + "/" + scale + "/" + bots + "/" + w.population;
 		long period = frame_ms;
-		synchronized (renderer) {//одновременные запросы одного слоя: первый рисует, остальные берут его кадр
+		render_lock.lock();//одновременные запросы одного слоя: первый рисует, остальные берут его кадр
+		try {
 			long now = System.currentTimeMillis();
 			long tick = now / period;
 			Frame f = frames.get(key);
@@ -572,6 +579,8 @@ public class Server {
 				frames.put(key, f);
 			}
 			return f;
+		}finally {
+			render_lock.unlock();
 		}
 	}
 	private static long next_frame_ms(Frame f) {//через сколько будет следующий кадр
@@ -607,14 +616,18 @@ public class Server {
 	static volatile int streams_open = 0;
 	private static void stream(HttpExchange ex, Map<String, String> q) throws IOException {
 		String ip = ip(ex);
-		synchronized (streams) {
-			if (streams_open >= max_streams || streams.getOrDefault(ip, 0) >= streams_per_ip) {
-				ex.getResponseHeaders().set("Retry-After", "10");
-				json(ex, 429, "{\"ok\":false,\"error\":\"слишком много потоков — смотрите кадрами\"}");
-				return;
+		boolean full;
+		synchronized (streams) {//ответ в сеть — вне synchronized (см. render_lock)
+			full = streams_open >= max_streams || streams.getOrDefault(ip, 0) >= streams_per_ip;
+			if (!full) {
+				streams.merge(ip, 1, Integer::sum);
+				streams_open++;
 			}
-			streams.merge(ip, 1, Integer::sum);
-			streams_open++;
+		}
+		if (full) {
+			ex.getResponseHeaders().set("Retry-After", "10");
+			json(ex, 429, "{\"ok\":false,\"error\":\"слишком много потоков — смотрите кадрами\"}");
+			return;
 		}
 		try {
 			var h = ex.getResponseHeaders();
@@ -704,15 +717,16 @@ public class Server {
 		long now = System.currentTimeMillis();
 		long limit = brain_limit_sec * 1000L;
 		if (!control && limit > 0) {
-			synchronized (brain_last) {
-				Long last = brain_last.get(ip);
-				if (last != null && now - last < limit) {
-					long wait = (limit - (now - last) + 999) / 1000;
-					ex.getResponseHeaders().set("Retry-After", String.valueOf(wait));
-					json(ex, 429, "{\"ok\":false,\"retry_after\":" + wait + ",\"limit_sec\":" + brain_limit_sec
-						+ ",\"error\":" + str("мозг можно запрашивать раз в " + brain_limit_sec + " с — подождите " + wait + " с") + "}");
-					return;
-				}
+			Long last;
+			synchronized (brain_last) {//только чтение: ответ в сеть — вне synchronized (см. render_lock)
+				last = brain_last.get(ip);
+			}
+			if (last != null && now - last < limit) {
+				long wait = (limit - (now - last) + 999) / 1000;
+				ex.getResponseHeaders().set("Retry-After", String.valueOf(wait));
+				json(ex, 429, "{\"ok\":false,\"retry_after\":" + wait + ",\"limit_sec\":" + brain_limit_sec
+					+ ",\"error\":" + str("мозг можно запрашивать раз в " + brain_limit_sec + " с — подождите " + wait + " с") + "}");
+				return;
 			}
 		}
 		String body;
